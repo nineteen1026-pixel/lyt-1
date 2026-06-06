@@ -217,10 +217,20 @@ const useStore = create<SupplyChainStore>((set, get) => ({
     if (!demand || !supplier) return
 
     const demandQuotes = state.quotes.filter((q) => q.demandId === demandId)
-    let selectedQuote = demandQuotes.find((q) => q.supplierId === supplierId)
-    let newQuotes = [...state.quotes]
+    const existingQuote = demandQuotes.find((q) => q.supplierId === supplierId)
 
-    if (!selectedQuote) {
+    let newQuotes = state.quotes.map((q) => {
+      if (q.demandId !== demandId) return q
+      return { ...q, status: '有效' as const }
+    })
+
+    let selectedQuote: Quote
+    if (existingQuote) {
+      newQuotes = newQuotes.map((q) =>
+        q.id === existingQuote.id ? { ...q, status: '已采纳' as const } : q
+      )
+      selectedQuote = { ...existingQuote, status: '已采纳' }
+    } else {
       const estimatedPrice = Math.round(demand.quantity * (80 + Math.random() * 220) * 100) / 100
       selectedQuote = {
         id: getNextId('QT', state.quotes),
@@ -238,11 +248,6 @@ const useStore = create<SupplyChainStore>((set, get) => ({
         remarks: '供应商直选生成报价',
       }
       newQuotes.push(selectedQuote)
-    } else {
-      newQuotes = newQuotes.map((q) => {
-        if (q.demandId !== demandId) return q
-        return { ...q, status: q.supplierId === supplierId ? '已采纳' as const : '有效' as const }
-      })
     }
 
     const now = new Date().toISOString().replace('T', ' ').slice(0, 16)
