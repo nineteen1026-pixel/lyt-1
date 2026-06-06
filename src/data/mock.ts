@@ -1,4 +1,4 @@
-import type { Demand, Quote, Supplier, Approval, ApprovalRecord, TransportTask, TransitNode, ExceptionReport, TransportStatus, TransitNodeStatus, ExceptionStatus, ExceptionType } from '@/types'
+import type { Demand, Quote, Supplier, Approval, ApprovalRecord, TransportTask, TransitNode, ExceptionReport, TransportStatus, TransitNodeStatus, ExceptionStatus, ExceptionType, ExceptionSeverity } from '@/types'
 
 const cargoTypes = ['电子元器件', '机械零部件', '化工原料', '食品饮料', '纺织原料', '医疗器械', '汽车配件', '建材物资']
 const origins = ['上海浦东', '深圳盐田', '广州黄埔', '宁波北仑', '天津新港', '青岛前湾', '大连大窑湾', '厦门海沧']
@@ -89,6 +89,8 @@ export function generateSuppliers(count: number = 8): Supplier[] {
     const fulfillmentRate = randomBetween(82, 99)
     const overallScore = Math.round((priceScore * 0.25 + timeScore * 0.2 + serviceScore * 0.25 + qualificationScore * 0.15 + fulfillmentRate * 0.15) * 10) / 10
 
+    const baseExceptionCount = randomBetween(0, 5)
+    const baseResolvedCount = randomBetween(0, baseExceptionCount)
     return {
       id: `SP-${String(2001 + i).padStart(4, '0')}`,
       name: supplierNames[i % supplierNames.length],
@@ -103,6 +105,8 @@ export function generateSuppliers(count: number = 8): Supplier[] {
       contactPerson: `${pick(['张', '李', '王', '赵', '刘'])}${pick(['经理', '总监', '主管'])}`,
       contactPhone: `1${randomBetween(30, 99)}${String(randomBetween(10000000, 99999999))}`,
       address: `${pick(['上海', '深圳', '广州', '宁波', '天津', '青岛'])}${pick(['市浦东新区', '市南山区', '市天河区', '市鄞州区', '市滨海新区'])}${pick(['物流大道', '港城路', '保税区', '产业园'])}${randomBetween(1, 200)}号`,
+      exceptionCount: baseExceptionCount,
+      resolvedExceptionCount: baseResolvedCount,
     }
   })
 }
@@ -244,6 +248,8 @@ const exceptionDescriptions = [
   '突降暴雪，道路封闭',
   '货物包装破损，需重新加固',
   '预计延误，需重新规划路线',
+  '货物外包装破损，部分货物受损',
+  '客户要求改派其他车辆运输',
   '其他异常情况，正在处理中',
 ]
 
@@ -335,38 +341,85 @@ export function generateTransitNodes(transportTasks: TransportTask[]): TransitNo
 
 export function generateExceptionReports(transportTasks: TransportTask[]): ExceptionReport[] {
   const exceptionReports: ExceptionReport[] = []
-  const exceptionTypes: ExceptionType[] = ['车辆故障', '交通拥堵', '天气原因', '货物损坏', '延误', '其他']
+  const exceptionTypes: ExceptionType[] = ['车辆故障', '交通拥堵', '天气原因', '货物损坏', '延误', '破损', '改派', '其他']
   const exceptionStatuses: ExceptionStatus[] = ['待处理', '处理中', '已解决']
+  const severities: ExceptionSeverity[] = ['轻微', '一般', '严重', '重大']
+
+  const typeToDescIndex: Record<ExceptionType, number> = {
+    '车辆故障': 0,
+    '交通拥堵': 1,
+    '天气原因': 2,
+    '货物损坏': 3,
+    '延误': 4,
+    '破损': 5,
+    '改派': 6,
+    '其他': 7,
+  }
+
+  const typeToScoreImpact: Record<ExceptionType, number> = {
+    '延误': 3,
+    '破损': 5,
+    '改派': 2,
+    '货物损坏': 6,
+    '车辆故障': 4,
+    '交通拥堵': 1,
+    '天气原因': 1,
+    '其他': 1,
+  }
+
+  const severityToMultiplier: Record<ExceptionSeverity, number> = {
+    '轻微': 0.5,
+    '一般': 1,
+    '严重': 1.5,
+    '重大': 2,
+  }
 
   transportTasks.forEach((task) => {
-    if (task.status !== '已完成' && Math.random() > 0.5) {
+    if (task.status !== '已完成' && Math.random() > 0.4) {
       const type = exceptionTypes[randomBetween(0, exceptionTypes.length - 1)]
       const status = exceptionStatuses[randomBetween(0, exceptionStatuses.length - 1)]
+      const severity = severities[randomBetween(0, severities.length - 1)]
       const reportedAt = generateDateTime(randomBetween(-3, 0))
 
       let handledBy: string | undefined
       let handledAt: string | undefined
       let solution: string | undefined
+      let lossAmount: number | undefined
+      let delayHours: number | undefined
 
       if (status !== '待处理') {
         handledBy = pick(['调度员A', '调度员B', '主管'])
         handledAt = generateDateTime(randomBetween(-2, 0))
       }
       if (status === '已解决') {
-        solution = pick(['已更换车辆继续运输', '已绕道行驶', '已重新加固包装', '已协调处理完毕'])
+        solution = pick(['已更换车辆继续运输', '已绕道行驶', '已重新加固包装', '已协调处理完毕', '已安排改派车辆'])
       }
+      if (type === '破损' || type === '货物损坏') {
+        lossAmount = randomBetween(100, 5000)
+      }
+      if (type === '延误' || type === '交通拥堵') {
+        delayHours = randomBetween(1, 48)
+      }
+
+      const scoreImpact = Math.round(typeToScoreImpact[type] * severityToMultiplier[severity] * 10) / 10
 
       exceptionReports.push({
         id: `EX-${String(8001 + exceptionReports.length).padStart(4, '0')}`,
         transportId: task.id,
+        demandId: task.demandId,
+        supplierId: task.supplierId,
         type,
-        description: exceptionDescriptions[exceptionTypes.indexOf(type)],
+        severity,
+        description: exceptionDescriptions[typeToDescIndex[type]],
         status,
         reporter: pick(['司机', '调度员', '系统监控']),
         reportedAt,
         handledBy,
         handledAt,
         solution,
+        lossAmount,
+        scoreImpact,
+        delayHours,
       })
     }
   })

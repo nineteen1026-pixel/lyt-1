@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react'
-import { Plus, Search, Filter, Package, Clock, CheckCircle2, XCircle, ArrowRight, X, CheckCircle, Send } from 'lucide-react'
+import { Plus, Search, Filter, Package, Clock, CheckCircle2, XCircle, ArrowRight, X, CheckCircle, Send, AlertTriangle } from 'lucide-react'
 import useStore from '@/store/useStore'
 import StatsCard from '@/components/StatsCard'
-import type { Demand, DemandStatus, Urgency } from '@/types'
+import type { Demand, DemandStatus, Urgency, ExceptionReport } from '@/types'
 
 const urgencyStyle: Record<Urgency, string> = {
   '紧急': 'bg-red-100 text-red-700',
@@ -31,7 +31,7 @@ const initForm = {
 }
 
 export default function Demands() {
-  const { demands, addDemand, quotes, suppliers, acceptQuote, initiateApproval, approvals } = useStore()
+  const { demands, addDemand, quotes, suppliers, acceptQuote, initiateApproval, approvals, exceptionReports, transportTasks } = useStore()
   const [showModal, setShowModal] = useState(false)
   const [selected, setSelected] = useState<Demand | null>(null)
   const [statusFilter, setStatusFilter] = useState('')
@@ -59,6 +59,11 @@ export default function Demands() {
       supplierName: suppliers.find(s => s.id === q.supplierId)?.name ?? '未知',
     }))
   }, [selected, quotes, suppliers])
+
+  const relatedExceptions = useMemo((): ExceptionReport[] => {
+    if (!selected) return []
+    return exceptionReports.filter(e => e.demandId === selected.id)
+  }, [selected, exceptionReports])
 
   const handleSubmit = () => {
     if (!form.title || !form.cargoType || !form.origin || !form.destination || !form.expectedDate) return
@@ -286,6 +291,40 @@ export default function Demands() {
               )}
               {relatedQuotes.length === 0 && (
                 <div className="text-center py-6 text-surface-400 text-sm">暂无相关报价</div>
+              )}
+
+              {relatedExceptions.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-semibold text-surface-800 mb-3 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-red-500" />
+                    运输异常 ({relatedExceptions.length})
+                  </h4>
+                  <div className="space-y-3">
+                    {relatedExceptions.map(ex => (
+                      <div key={ex.id} className="bg-red-50 border border-red-100 rounded-lg p-3 text-sm">
+                        <div className="flex items-center gap-2 flex-wrap mb-2">
+                          <span className="px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">{ex.type}</span>
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${ex.status === '已解决' ? 'bg-green-100 text-green-700' : ex.status === '处理中' ? 'bg-orange-100 text-orange-700' : 'bg-red-100 text-red-700'}`}>{ex.status}</span>
+                          {ex.severity && (
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                              ex.severity === '重大' ? 'bg-red-100 text-red-700' :
+                              ex.severity === '严重' ? 'bg-orange-100 text-orange-700' :
+                              ex.severity === '一般' ? 'bg-blue-100 text-blue-700' :
+                              'bg-green-100 text-green-700'
+                            }`}>{ex.severity}</span>
+                          )}
+                          <span className="text-xs text-surface-400 ml-auto">{ex.reportedAt}</span>
+                        </div>
+                        <p className="text-surface-700">{ex.description}</p>
+                        {ex.solution && (
+                          <div className="mt-2 p-2 bg-green-50 rounded text-xs text-green-700">
+                            <span className="font-medium">解决方案:</span> {ex.solution}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
           </div>

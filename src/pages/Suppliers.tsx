@@ -1,9 +1,9 @@
 import { useState, useMemo } from 'react'
 import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer } from 'recharts'
-import { Users, Award, TrendingUp, Search, Star, Phone, MapPin, X, Shield, CheckCircle } from 'lucide-react'
+import { Users, Award, TrendingUp, Search, Star, Phone, MapPin, X, Shield, CheckCircle, AlertTriangle, CheckCircle2 } from 'lucide-react'
 import useStore from '@/store/useStore'
 import StatsCard from '@/components/StatsCard'
-import type { Supplier } from '@/types'
+import type { Supplier, ExceptionReport } from '@/types'
 
 const categories = ['全部', '综合物流', '冷链运输', '集装箱运输', '散货运输', '危化品运输', '大宗物资']
 
@@ -14,7 +14,7 @@ const scoreColor = (score: number) =>
   score >= 85 ? 'text-orange-500' : 'text-blue-500'
 
 export default function Suppliers() {
-  const { suppliers, demands, selectSupplierAndInitiateApproval } = useStore()
+  const { suppliers, demands, selectSupplierAndInitiateApproval, exceptionReports } = useStore()
   const [category, setCategory] = useState('全部')
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Supplier | null>(null)
@@ -73,6 +73,11 @@ export default function Suppliers() {
         { label: '履约率', value: selected.fulfillmentRate, color: 'bg-orange-500' },
       ]
     : []
+
+  const supplierExceptions = useMemo((): ExceptionReport[] => {
+    if (!selected) return []
+    return exceptionReports.filter(e => e.supplierId === selected.id).sort((a, b) => b.reportedAt.localeCompare(a.reportedAt))
+  }, [selected, exceptionReports])
 
   return (
     <div className="animate-fade-in-up space-y-6">
@@ -148,6 +153,18 @@ export default function Suppliers() {
                 />
               </div>
             </div>
+
+            {(s.exceptionCount !== undefined && s.exceptionCount > 0) && (
+              <div className="flex items-center gap-2 text-xs">
+                <AlertTriangle className="w-3.5 h-3.5 text-orange-500" />
+                <span className="text-surface-500">
+                  异常记录: <span className="font-medium text-orange-600">{s.exceptionCount}</span> 次
+                  {s.resolvedExceptionCount !== undefined && (
+                    <span className="text-emerald-600 ml-1">({s.resolvedExceptionCount} 已解决)</span>
+                  )}
+                </span>
+              </div>
+            )}
 
             <div className="mt-auto flex gap-2">
               <button
@@ -235,6 +252,58 @@ export default function Suppliers() {
                   ))}
                 </div>
               </div>
+
+              {supplierExceptions.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-semibold text-brand-500 mb-3 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-orange-500" />
+                    异常记录 ({supplierExceptions.length})
+                  </h4>
+                  <div className="space-y-3 max-h-80 overflow-y-auto">
+                    {supplierExceptions.map(ex => (
+                      <div key={ex.id} className="bg-surface-50 rounded-lg p-3 text-sm border border-surface-100">
+                        <div className="flex items-center gap-2 flex-wrap mb-2">
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            ex.type === '破损' ? 'bg-rose-100 text-rose-700' :
+                            ex.type === '延误' ? 'bg-yellow-100 text-yellow-700' :
+                            ex.type === '改派' ? 'bg-indigo-100 text-indigo-700' :
+                            'bg-gray-100 text-gray-700'
+                          }`}>{ex.type}</span>
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            ex.status === '已解决' ? 'bg-emerald-100 text-emerald-700' :
+                            ex.status === '处理中' ? 'bg-orange-100 text-orange-700' :
+                            'bg-red-100 text-red-700'
+                          }`}>{ex.status}</span>
+                          {ex.severity && (
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                              ex.severity === '重大' ? 'bg-red-100 text-red-700' :
+                              ex.severity === '严重' ? 'bg-orange-100 text-orange-700' :
+                              ex.severity === '一般' ? 'bg-blue-100 text-blue-700' :
+                              'bg-green-100 text-green-700'
+                            }`}>{ex.severity}</span>
+                          )}
+                          {ex.scoreImpact !== undefined && ex.scoreImpact > 0 && (
+                            <span className="px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-600">
+                              -{ex.scoreImpact}分
+                            </span>
+                          )}
+                          <span className="text-xs text-surface-400 ml-auto">{ex.reportedAt}</span>
+                        </div>
+                        <p className="text-surface-700">{ex.description}</p>
+                        {ex.solution && (
+                          <div className="mt-2 p-2 bg-emerald-50 rounded text-xs text-emerald-700 flex items-start gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                            <div>
+                              <span className="font-medium">解决方案: </span>
+                              {ex.solution}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </>

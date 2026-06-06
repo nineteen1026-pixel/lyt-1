@@ -20,7 +20,7 @@ import {
 } from 'lucide-react'
 import useStore from '@/store/useStore'
 import StatsCard from '@/components/StatsCard'
-import type { TransportTask, TransportStatus, ExceptionStatus, ExceptionType } from '@/types'
+import type { TransportTask, TransportStatus, ExceptionStatus, ExceptionType, ExceptionSeverity } from '@/types'
 
 const statusFilters: ('全部' | TransportStatus)[] = ['全部', '待执行', '运输中', '已完成']
 const exceptionStatusFilters: ('全部' | ExceptionStatus)[] = ['全部', '待处理', '处理中', '已解决']
@@ -50,7 +50,16 @@ const exceptionTypeBadge: Record<ExceptionType, { bg: string; text: string }> = 
   天气原因: { bg: 'bg-cyan-100', text: 'text-cyan-600' },
   货物损坏: { bg: 'bg-purple-100', text: 'text-purple-600' },
   延误: { bg: 'bg-yellow-100', text: 'text-yellow-600' },
+  破损: { bg: 'bg-rose-100', text: 'text-rose-600' },
+  改派: { bg: 'bg-indigo-100', text: 'text-indigo-600' },
   其他: { bg: 'bg-gray-100', text: 'text-gray-600' },
+}
+
+const severityBadge: Record<ExceptionSeverity, { bg: string; text: string }> = {
+  轻微: { bg: 'bg-green-100', text: 'text-green-600' },
+  一般: { bg: 'bg-blue-100', text: 'text-blue-600' },
+  严重: { bg: 'bg-orange-100', text: 'text-orange-600' },
+  重大: { bg: 'bg-red-100', text: 'text-red-600' },
 }
 
 export default function TransportDashboard() {
@@ -70,7 +79,10 @@ export default function TransportDashboard() {
   const [showApprovedList, setShowApprovedList] = useState(true)
   const [showAddException, setShowAddException] = useState<string | null>(null)
   const [newExceptionType, setNewExceptionType] = useState<ExceptionType>('其他')
+  const [newExceptionSeverity, setNewExceptionSeverity] = useState<ExceptionSeverity>('一般')
   const [newExceptionDesc, setNewExceptionDesc] = useState('')
+  const [newExceptionLoss, setNewExceptionLoss] = useState<string>('')
+  const [newExceptionDelay, setNewExceptionDelay] = useState<string>('')
 
   const approvedApprovals = useMemo(() => approvals.filter((a) => a.status === '已通过'), [approvals])
 
@@ -116,12 +128,18 @@ export default function TransportDashboard() {
       addExceptionReport({
         transportId,
         type: newExceptionType,
+        severity: newExceptionSeverity,
         description: newExceptionDesc,
         status: '待处理',
         reporter: '当前用户',
+        lossAmount: newExceptionLoss ? parseFloat(newExceptionLoss) : undefined,
+        delayHours: newExceptionDelay ? parseInt(newExceptionDelay) : undefined,
       })
       setNewExceptionDesc('')
       setNewExceptionType('其他')
+      setNewExceptionSeverity('一般')
+      setNewExceptionLoss('')
+      setNewExceptionDelay('')
       setShowAddException(null)
     }
   }
@@ -335,37 +353,65 @@ export default function TransportDashboard() {
                   {showAddException === task.id && (
                     <div className="mt-4 p-4 bg-orange-50 rounded-lg border border-orange-100 space-y-3">
                       <h4 className="text-sm font-semibold text-orange-700">上报异常</h4>
-                      <div className="flex gap-3">
+                      <div className="grid grid-cols-2 gap-3">
                         <select
                           value={newExceptionType}
                           onChange={(e) => setNewExceptionType(e.target.value as ExceptionType)}
                           className="px-3 py-2 rounded-lg border border-orange-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
                         >
+                          <option value="延误">延误</option>
+                          <option value="破损">破损</option>
+                          <option value="改派">改派</option>
                           <option value="车辆故障">车辆故障</option>
                           <option value="交通拥堵">交通拥堵</option>
                           <option value="天气原因">天气原因</option>
                           <option value="货物损坏">货物损坏</option>
-                          <option value="延误">延误</option>
                           <option value="其他">其他</option>
+                        </select>
+                        <select
+                          value={newExceptionSeverity}
+                          onChange={(e) => setNewExceptionSeverity(e.target.value as ExceptionSeverity)}
+                          className="px-3 py-2 rounded-lg border border-orange-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        >
+                          <option value="轻微">轻微</option>
+                          <option value="一般">一般</option>
+                          <option value="严重">严重</option>
+                          <option value="重大">重大</option>
                         </select>
                         <input
                           type="text"
                           value={newExceptionDesc}
                           onChange={(e) => setNewExceptionDesc(e.target.value)}
                           placeholder="请输入异常描述..."
-                          className="flex-1 px-3 py-2 rounded-lg border border-orange-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          className="col-span-2 px-3 py-2 rounded-lg border border-orange-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
                         />
-                        <button
-                          onClick={() => handleAddException(task.id)}
-                          className="px-4 py-2 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium transition-colors flex items-center gap-1.5"
-                        >
-                          <Send className="w-4 h-4" /> 提交
-                        </button>
+                        <input
+                          type="number"
+                          value={newExceptionLoss}
+                          onChange={(e) => setNewExceptionLoss(e.target.value)}
+                          placeholder="损失金额（元，可选）"
+                          className="px-3 py-2 rounded-lg border border-orange-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        />
+                        <input
+                          type="number"
+                          value={newExceptionDelay}
+                          onChange={(e) => setNewExceptionDelay(e.target.value)}
+                          placeholder="延误时长（小时，可选）"
+                          className="px-3 py-2 rounded-lg border border-orange-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        />
+                      </div>
+                      <div className="flex gap-2 justify-end">
                         <button
                           onClick={() => setShowAddException(null)}
                           className="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-600 text-sm font-medium transition-colors"
                         >
                           取消
+                        </button>
+                        <button
+                          onClick={() => handleAddException(task.id)}
+                          className="px-4 py-2 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium transition-colors flex items-center gap-1.5"
+                        >
+                          <Send className="w-4 h-4" /> 提交
                         </button>
                       </div>
                     </div>
@@ -442,20 +488,32 @@ export default function TransportDashboard() {
                           {taskExceptions.map((ex) => (
                             <div key={ex.id} className="bg-white rounded-lg p-4 border border-surface-100">
                               <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
                                   <span className={`px-2 py-0.5 rounded text-xs font-medium ${exceptionTypeBadge[ex.type].bg} ${exceptionTypeBadge[ex.type].text}`}>
                                     {ex.type}
                                   </span>
                                   <span className={`px-2 py-0.5 rounded text-xs font-medium ${exceptionBadge[ex.status].bg} ${exceptionBadge[ex.status].text}`}>
                                     {ex.status}
                                   </span>
+                                  {ex.severity && (
+                                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${severityBadge[ex.severity].bg} ${severityBadge[ex.severity].text}`}>
+                                      {ex.severity}
+                                    </span>
+                                  )}
+                                  {ex.scoreImpact !== undefined && ex.scoreImpact > 0 && (
+                                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-600">
+                                      评分 -{ex.scoreImpact}
+                                    </span>
+                                  )}
                                 </div>
                                 <span className="text-xs text-surface-400">{ex.reportedAt}</span>
                               </div>
                               <p className="text-sm text-surface-700 mt-2">{ex.description}</p>
-                              <div className="mt-2 flex items-center gap-4 text-xs text-surface-500">
+                              <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-surface-500">
                                 <span>上报人: {ex.reporter}</span>
                                 {ex.handledBy && <span>处理人: {ex.handledBy}</span>}
+                                {ex.lossAmount !== undefined && <span>损失金额: ¥{ex.lossAmount.toLocaleString()}</span>}
+                                {ex.delayHours !== undefined && <span>延误时长: {ex.delayHours}小时</span>}
                               </div>
                               {ex.solution && (
                                 <div className="mt-2 p-2 bg-emerald-50 rounded text-xs text-emerald-700">
@@ -529,37 +587,65 @@ export default function TransportDashboard() {
                     {showAddException === task.id && (
                       <div className="p-4 bg-orange-50 rounded-lg border border-orange-100 space-y-3">
                         <h4 className="text-sm font-semibold text-orange-700">上报异常</h4>
-                        <div className="flex gap-3">
+                        <div className="grid grid-cols-2 gap-3">
                           <select
                             value={newExceptionType}
                             onChange={(e) => setNewExceptionType(e.target.value as ExceptionType)}
                             className="px-3 py-2 rounded-lg border border-orange-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
                           >
+                            <option value="延误">延误</option>
+                            <option value="破损">破损</option>
+                            <option value="改派">改派</option>
                             <option value="车辆故障">车辆故障</option>
                             <option value="交通拥堵">交通拥堵</option>
                             <option value="天气原因">天气原因</option>
                             <option value="货物损坏">货物损坏</option>
-                            <option value="延误">延误</option>
                             <option value="其他">其他</option>
+                          </select>
+                          <select
+                            value={newExceptionSeverity}
+                            onChange={(e) => setNewExceptionSeverity(e.target.value as ExceptionSeverity)}
+                            className="px-3 py-2 rounded-lg border border-orange-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          >
+                            <option value="轻微">轻微</option>
+                            <option value="一般">一般</option>
+                            <option value="严重">严重</option>
+                            <option value="重大">重大</option>
                           </select>
                           <input
                             type="text"
                             value={newExceptionDesc}
                             onChange={(e) => setNewExceptionDesc(e.target.value)}
                             placeholder="请输入异常描述..."
-                            className="flex-1 px-3 py-2 rounded-lg border border-orange-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                            className="col-span-2 px-3 py-2 rounded-lg border border-orange-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
                           />
-                          <button
-                            onClick={() => handleAddException(task.id)}
-                            className="px-4 py-2 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium transition-colors flex items-center gap-1.5"
-                          >
-                            <Send className="w-4 h-4" /> 提交
-                          </button>
+                          <input
+                            type="number"
+                            value={newExceptionLoss}
+                            onChange={(e) => setNewExceptionLoss(e.target.value)}
+                            placeholder="损失金额（元，可选）"
+                            className="px-3 py-2 rounded-lg border border-orange-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          />
+                          <input
+                            type="number"
+                            value={newExceptionDelay}
+                            onChange={(e) => setNewExceptionDelay(e.target.value)}
+                            placeholder="延误时长（小时，可选）"
+                            className="px-3 py-2 rounded-lg border border-orange-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          />
+                        </div>
+                        <div className="flex gap-2 justify-end">
                           <button
                             onClick={() => setShowAddException(null)}
                             className="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-600 text-sm font-medium transition-colors"
                           >
                             取消
+                          </button>
+                          <button
+                            onClick={() => handleAddException(task.id)}
+                            className="px-4 py-2 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium transition-colors flex items-center gap-1.5"
+                          >
+                            <Send className="w-4 h-4" /> 提交
                           </button>
                         </div>
                       </div>
@@ -606,13 +692,23 @@ export default function TransportDashboard() {
             return (
               <div key={ex.id} className="bg-white rounded-xl p-4 shadow-sm border border-surface-100">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className={`px-2 py-0.5 rounded text-xs font-medium ${exceptionTypeBadge[ex.type].bg} ${exceptionTypeBadge[ex.type].text}`}>
                       {ex.type}
                     </span>
                     <span className={`px-2 py-0.5 rounded text-xs font-medium ${exceptionBadge[ex.status].bg} ${exceptionBadge[ex.status].text}`}>
                       {ex.status}
                     </span>
+                    {ex.severity && (
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${severityBadge[ex.severity].bg} ${severityBadge[ex.severity].text}`}>
+                        {ex.severity}
+                      </span>
+                    )}
+                    {ex.scoreImpact !== undefined && ex.scoreImpact > 0 && (
+                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-red-50 text-red-600">
+                        评分 -{ex.scoreImpact}
+                      </span>
+                    )}
                   </div>
                   <span className="text-xs text-surface-400">{ex.reportedAt}</span>
                 </div>
@@ -622,9 +718,11 @@ export default function TransportDashboard() {
                     关联运输: <span className="font-mono">{task.id}</span> · {task.demandTitle}
                   </p>
                 )}
-                <div className="mt-2 flex items-center gap-4 text-xs text-surface-500">
+                <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-surface-500">
                   <span>上报人: {ex.reporter}</span>
                   {ex.handledBy && <span>处理人: {ex.handledBy}</span>}
+                  {ex.lossAmount !== undefined && <span>损失金额: ¥{ex.lossAmount.toLocaleString()}</span>}
+                  {ex.delayHours !== undefined && <span>延误时长: {ex.delayHours}小时</span>}
                 </div>
                 {ex.solution && (
                   <div className="mt-2 p-2 bg-emerald-50 rounded text-xs text-emerald-700">

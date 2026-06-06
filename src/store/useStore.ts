@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Demand, Quote, Supplier, Approval, ApprovalRecord, DemandStatus, Urgency, ApprovalStatus, ApprovalAction, TransportTask, TransitNode, ExceptionReport, TransportStatus, ExceptionStatus } from '@/types'
+import type { Demand, Quote, Supplier, Approval, ApprovalRecord, DemandStatus, Urgency, ApprovalStatus, ApprovalAction, TransportTask, TransitNode, ExceptionReport, TransportStatus, ExceptionStatus, ExceptionType, ExceptionSeverity } from '@/types'
 import { generateAllData } from '@/data/mock'
 
 interface SupplyChainStore {
@@ -26,7 +26,8 @@ interface SupplyChainStore {
   selectSupplierAndInitiateApproval: (params: { demandId: string; supplierId: string }) => void
   updateTransportStatus: (id: string, status: TransportStatus) => void
   updateExceptionStatus: (id: string, status: ExceptionStatus, solution?: string) => void
-  addExceptionReport: (report: Omit<ExceptionReport, 'id' | 'reportedAt'>) => void
+  addExceptionReport: (report: Omit<ExceptionReport, 'id' | 'reportedAt' | 'demandId' | 'supplierId'> & { transportId: string }) => void
+  updateSupplierScoreWithException: (supplierId: string, exceptionType: ExceptionType, severity: ExceptionSeverity) => number
 }
 
 const initialData = generateAllData()
@@ -38,6 +39,26 @@ function getNextId(prefix: string, items: { id: string }[]): string {
   })
   const maxNum = Math.max(0, ...nums)
   return `${prefix}-${String(maxNum + 1).padStart(4, '0')}`
+}
+
+function calculateScoreImpact(exceptionType: ExceptionType, severity: ExceptionSeverity): number {
+  const typeImpact: Record<ExceptionType, number> = {
+    '延误': 3,
+    '破损': 5,
+    '改派': 2,
+    '货物损坏': 6,
+    '车辆故障': 4,
+    '交通拥堵': 1,
+    '天气原因': 1,
+    '其他': 1,
+  }
+  const severityImpact: Record<ExceptionSeverity, number> = {
+    '轻微': 0.5,
+    '一般': 1,
+    '严重': 1.5,
+    '重大': 2,
+  }
+  return Math.round(typeImpact[exceptionType] * severityImpact[severity] * 10) / 10
 }
 
 const useStore = create<SupplyChainStore>((set, get) => ({
@@ -315,35 +336,93 @@ const useStore = create<SupplyChainStore>((set, get) => ({
 
   updateExceptionStatus: (id, status, solution) => {
     const now = new Date().toISOString().replace('T', ' ').slice(0, 16)
-    set((state) => ({
-      exceptionReports: state.exceptionReports.map((e) => {
-        if (e.id !== id) return e
-        const updated: ExceptionReport = { ...e, status }
-        if (status !== '待处理' && !e.handledBy) {
-          updated.handledBy = '当前用户'
-          updated.handledAt = now
+    set((state) => {
+      const exception = state.exceptionReports.find((e) => e.id === id)
+      const wasUnresolved = exception && exception.status !== '已解决'
+      const isNowResolved = status === '已解决'
+      
+      return {
+        exceptionReports: state.exceptionReports.map((e) => {
+          if (e.id !== id) return e
+          const updated: ExceptionReport = { ...e, status }
+          if (status !== '待处理' && !e.handledBy) {
+            updated.handledBy = '当前用户'
+            updated.handledAt = now
+          }
+          if (solution) {
+            updated.solution = solution
+          }
+          return updated
+        }),
+        suppliers: state.suppliers.map((sup) => {
+          if (!exception || sup.id !== exception.supplierId) return sup
+          if (wasUnresolved && isNowResolved) {
+            return {
+              ...sup,
+              resolvedExceptionCount: (sup.resolvedExceptionCount || 0) + 1,
+            }
+          }
+          return sup
+        }),
+      }
+    })
+  },
+
+  addExceptionReport: (report) => {
+    const state = get()
+    const id = getNextId('EX', state.exceptionReports)
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 16)
+    
+    const transport = state.transportTasks.find((t) => t.id === report.transportId)
+    const demandId = transport?.demandId || ''
+    const supplierId = transport?.supplierId || ''
+    
+    const scoreImpact = calculateScoreImpact(report.type, report.severity)
+    
+    const newReport: ExceptionReport = {
+      ...report,
+      id,
+      demandId,
+      supplierId,
+      reportedAt: now,
+      scoreImpact,
+    }
+
+    set((s) => ({
+      exceptionReports: [...s.exceptionReports, newReport],
+      suppliers: s.suppliers.map((sup) => {
+        if (sup.id !== supplierId) return sup
+        const newTimeScore = Math.max(0, sup.timeScore - (report.type === '延误' || report.type === '改派' ? scoreImpact * 0.5 : 0))
+        const newServiceScore = Math.max(0, sup.serviceScore - (report.type === '破损' || report.type === '货物损坏' ? scoreImpact * 0.6 : scoreImpact * 0.3))
+        const newOverallScore = Math.round((sup.priceScore * 0.25 + newTimeScore * 0.2 + newServiceScore * 0.25 + sup.qualificationScore * 0.15 + sup.fulfillmentRate * 0.15) * 10) / 10
+        return {
+          ...sup,
+          timeScore: Math.round(newTimeScore * 10) / 10,
+          serviceScore: Math.round(newServiceScore * 10) / 10,
+          overallScore: newOverallScore,
+          exceptionCount: (sup.exceptionCount || 0) + 1,
         }
-        if (solution) {
-          updated.solution = solution
-        }
-        return updated
       }),
     }))
   },
 
-  addExceptionReport: (report) => {
-    const id = getNextId('EX', get().exceptionReports)
-    const now = new Date().toISOString().replace('T', ' ').slice(0, 16)
+  updateSupplierScoreWithException: (supplierId, exceptionType, severity) => {
+    const scoreImpact = calculateScoreImpact(exceptionType, severity)
     set((state) => ({
-      exceptionReports: [
-        ...state.exceptionReports,
-        {
-          ...report,
-          id,
-          reportedAt: now,
-        },
-      ],
+      suppliers: state.suppliers.map((sup) => {
+        if (sup.id !== supplierId) return sup
+        const newTimeScore = Math.max(0, sup.timeScore - (exceptionType === '延误' || exceptionType === '改派' ? scoreImpact * 0.5 : 0))
+        const newServiceScore = Math.max(0, sup.serviceScore - (exceptionType === '破损' || exceptionType === '货物损坏' ? scoreImpact * 0.6 : scoreImpact * 0.3))
+        const newOverallScore = Math.round((sup.priceScore * 0.25 + newTimeScore * 0.2 + newServiceScore * 0.25 + sup.qualificationScore * 0.15 + sup.fulfillmentRate * 0.15) * 10) / 10
+        return {
+          ...sup,
+          timeScore: Math.round(newTimeScore * 10) / 10,
+          serviceScore: Math.round(newServiceScore * 10) / 10,
+          overallScore: newOverallScore,
+        }
+      }),
     }))
+    return scoreImpact
   },
 }))
 

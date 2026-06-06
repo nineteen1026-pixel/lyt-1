@@ -5,7 +5,8 @@ export type ApprovalAction = '通过' | '驳回' | '提交'
 export type TransportStatus = '待执行' | '运输中' | '已完成' | '已取消'
 export type TransitNodeStatus = '未到达' | '已到达' | '已出发'
 export type ExceptionStatus = '待处理' | '处理中' | '已解决'
-export type ExceptionType = '车辆故障' | '交通拥堵' | '天气原因' | '货物损坏' | '延误' | '其他'
+export type ExceptionType = '车辆故障' | '交通拥堵' | '天气原因' | '货物损坏' | '延误' | '破损' | '改派' | '其他'
+export type ExceptionSeverity = '轻微' | '一般' | '严重' | '重大'
 
 export interface Demand {
   id: string
@@ -48,6 +49,8 @@ export interface Supplier {
   contactPerson: string
   contactPhone: string
   address: string
+  exceptionCount?: number
+  resolvedExceptionCount?: number
 }
 
 export interface Approval {
@@ -109,7 +112,10 @@ export interface TransitNode {
 export interface ExceptionReport {
   id: string
   transportId: string
+  demandId: string
+  supplierId: string
   type: ExceptionType
+  severity: ExceptionSeverity
   description: string
   status: ExceptionStatus
   reporter: string
@@ -117,4 +123,7 @@ export interface ExceptionReport {
   handledBy?: string
   handledAt?: string
   solution?: string
+  lossAmount?: number
+  scoreImpact?: number
+  delayHours?: number
 }
