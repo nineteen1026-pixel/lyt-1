@@ -33,6 +33,8 @@ interface SupplyChainStore {
   updateExceptionStatus: (id: string, status: ExceptionStatus, solution?: string) => void
   addExceptionReport: (report: Omit<ExceptionReport, 'id' | 'reportedAt' | 'demandId' | 'supplierId'> & { transportId: string }) => void
   updateSupplierScoreWithException: (supplierId: string, exceptionType: ExceptionType, severity: ExceptionSeverity) => number
+  createTransportTaskFromApproval: (approvalId: string) => void
+  createDefaultTransitNodes: (transportId: string) => void
 }
 
 const initialData = generateAllData()
@@ -231,6 +233,10 @@ const useStore = create<SupplyChainStore>((set, get) => ({
         ? s.demands.map((d) => (d.id === approval.demandId ? { ...d, status: '已完成' as const } : d))
         : s.demands,
     }))
+
+    if (newStatus === '已通过') {
+      get().createTransportTaskFromApproval(approvalId)
+    }
   },
 
   rejectApproval: (approvalId, comment) => {
@@ -438,6 +444,119 @@ const useStore = create<SupplyChainStore>((set, get) => ({
       }),
     }))
     return scoreImpact
+  },
+
+  createTransportTaskFromApproval: (approvalId) => {
+    const state = get()
+    const approval = state.approvals.find((a) => a.id === approvalId)
+    if (!approval) return
+
+    const existingTask = state.transportTasks.find((t) => t.approvalId === approvalId)
+    if (existingTask) return
+
+    const demand = state.demands.find((d) => d.id === approval.demandId)
+    if (!demand) return
+
+    const plateNumbers = ['沪A12345', '粤B67890', '京C54321', '苏D98765', '浙E13579', '皖F24680', '鲁G11223', '冀H33445', '豫J55667', '川K77889']
+    const driverNames = ['张伟', '李强', '王磊', '赵军', '刘洋', '陈涛', '杨帆', '周明', '吴刚', '郑华']
+
+    const randomIndex = Math.floor(Math.random() * plateNumbers.length)
+    const now = new Date()
+    const estimatedDeparture = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+    const estimatedArrival = new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000)
+
+    const formatDateTime = (d: Date) => d.toISOString().replace('T', ' ').slice(0, 16)
+
+    const transportId = getNextId('TS', state.transportTasks)
+    const newTask: TransportTask = {
+      id: transportId,
+      approvalId: approval.id,
+      demandId: approval.demandId,
+      demandTitle: approval.demandTitle,
+      supplierId: approval.supplierId,
+      supplierName: approval.supplierName,
+      origin: demand.origin,
+      destination: demand.destination,
+      cargoType: demand.cargoType,
+      quantity: demand.quantity,
+      unit: demand.unit,
+      totalPrice: approval.totalPrice,
+      status: '待执行',
+      plateNumber: plateNumbers[randomIndex % plateNumbers.length],
+      driverName: driverNames[randomIndex % driverNames.length],
+      driverPhone: `1${Math.floor(Math.random() * 70 + 30)}${Math.floor(Math.random() * 90000000 + 10000000)}`,
+      estimatedDeparture: formatDateTime(estimatedDeparture),
+      estimatedArrival: formatDateTime(estimatedArrival),
+      createdAt: formatDateTime(now),
+    }
+
+    set((s) => ({
+      transportTasks: [...s.transportTasks, newTask],
+    }))
+
+    get().createDefaultTransitNodes(transportId)
+  },
+
+  createDefaultTransitNodes: (transportId) => {
+    const state = get()
+    const task = state.transportTasks.find((t) => t.id === transportId)
+    if (!task) return
+
+    const existingNodes = state.transitNodes.filter((n) => n.transportId === transportId)
+    if (existingNodes.length > 0) return
+
+    const now = new Date()
+    const formatDateTime = (d: Date) => d.toISOString().replace('T', ' ').slice(0, 16)
+
+    const defaultNodes = [
+      {
+        name: '始发仓',
+        location: task.origin,
+        order: 1,
+        daysOffset: 1,
+      },
+      {
+        name: '中转仓A',
+        location: '杭州',
+        order: 2,
+        daysOffset: 2,
+      },
+      {
+        name: '中转仓B',
+        location: '武汉',
+        order: 3,
+        daysOffset: 3,
+      },
+      {
+        name: '目的地仓',
+        location: task.destination,
+        order: 4,
+        daysOffset: 5,
+      },
+    ]
+
+    let currentNodes = [...state.transitNodes]
+    const newNodes: TransitNode[] = []
+
+    defaultNodes.forEach((node) => {
+      const estimatedTime = new Date(now.getTime() + node.daysOffset * 24 * 60 * 60 * 1000)
+      const nodeId = getNextId('TN', currentNodes)
+      const newNode: TransitNode = {
+        id: nodeId,
+        transportId,
+        name: node.name,
+        location: node.location,
+        status: '未到达',
+        estimatedTime: formatDateTime(estimatedTime),
+        order: node.order,
+      }
+      newNodes.push(newNode)
+      currentNodes.push(newNode)
+    })
+
+    set((s) => ({
+      transitNodes: [...s.transitNodes, ...newNodes],
+    }))
   },
 }))
 
