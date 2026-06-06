@@ -1,4 +1,4 @@
-import type { Demand, Quote, Supplier, Approval, ApprovalRecord } from '@/types'
+import type { Demand, Quote, Supplier, Approval, ApprovalRecord, TransportTask, TransitNode, ExceptionReport, TransportStatus, TransitNodeStatus, ExceptionStatus, ExceptionType } from '@/types'
 
 const cargoTypes = ['电子元器件', '机械零部件', '化工原料', '食品饮料', '纺织原料', '医疗器械', '汽车配件', '建材物资']
 const origins = ['上海浦东', '深圳盐田', '广州黄埔', '宁波北仑', '天津新港', '青岛前湾', '大连大窑湾', '厦门海沧']
@@ -235,11 +235,153 @@ export function generateApprovalRecords(approvals: Approval[]): ApprovalRecord[]
   return records
 }
 
+const plateNumbers = ['沪A12345', '粤B67890', '京C54321', '苏D98765', '浙E13579', '皖F24680', '鲁G11223', '冀H33445', '豫J55667', '川K77889']
+const driverNames = ['张伟', '李强', '王磊', '赵军', '刘洋', '陈涛', '杨帆', '周明', '吴刚', '郑华']
+const nodeNames = ['始发仓', '中转仓A', '中转仓B', '目的地仓']
+const exceptionDescriptions = [
+  '车辆发生故障，正在维修',
+  '高速路段交通拥堵，预计延误2小时',
+  '突降暴雪，道路封闭',
+  '货物包装破损，需重新加固',
+  '预计延误，需重新规划路线',
+  '其他异常情况，正在处理中',
+]
+
+export function generateTransportTasks(approvals: Approval[], demands: Demand[]): TransportTask[] {
+  const transportTasks: TransportTask[] = []
+  const approvedApprovals = approvals.filter((a) => a.status === '已通过')
+
+  approvedApprovals.forEach((approval, index) => {
+    const demand = demands.find((d) => d.id === approval.demandId)
+    if (!demand) return
+
+    const statuses: TransportStatus[] = ['待执行', '运输中', '已完成']
+    const status = statuses[index % 3]
+
+    const estimatedDeparture = generateDateTime(randomBetween(-5, 2))
+    const estimatedArrival = generateDateTime(randomBetween(3, 10))
+
+    let actualDeparture: string | undefined
+    let actualArrival: string | undefined
+
+    if (status === '运输中' || status === '已完成') {
+      actualDeparture = generateDateTime(randomBetween(-3, 1))
+    }
+    if (status === '已完成') {
+      actualArrival = generateDateTime(randomBetween(1, 5))
+    }
+
+    transportTasks.push({
+      id: `TS-${String(6001 + transportTasks.length).padStart(4, '0')}`,
+      approvalId: approval.id,
+      demandId: approval.demandId,
+      demandTitle: approval.demandTitle,
+      supplierId: approval.supplierId,
+      supplierName: approval.supplierName,
+      origin: demand.origin,
+      destination: demand.destination,
+      cargoType: demand.cargoType,
+      quantity: demand.quantity,
+      unit: demand.unit,
+      totalPrice: approval.totalPrice,
+      status,
+      plateNumber: plateNumbers[index % plateNumbers.length],
+      driverName: driverNames[index % driverNames.length],
+      driverPhone: `1${randomBetween(30, 99)}${String(randomBetween(10000000, 99999999))}`,
+      estimatedDeparture,
+      estimatedArrival,
+      actualDeparture,
+      actualArrival,
+      createdAt: generateDateTime(randomBetween(-10, -2)),
+    })
+  })
+
+  return transportTasks
+}
+
+export function generateTransitNodes(transportTasks: TransportTask[]): TransitNode[] {
+  const transitNodes: TransitNode[] = []
+
+  transportTasks.forEach((task) => {
+    const nodeCount = randomBetween(3, 4)
+    const statusWeights = task.status === '已完成' ? [0, 0, 10] : task.status === '运输中' ? [3, 4, 3] : [10, 0, 0]
+
+    for (let i = 0; i < nodeCount; i++) {
+      const statusIdx = weightedRandom(statusWeights)
+      const statuses: TransitNodeStatus[] = ['未到达', '已到达', '已出发']
+      const status = statuses[statusIdx]
+
+      let actualTime: string | undefined
+      if (status === '已到达' || status === '已出发') {
+        actualTime = generateDateTime(randomBetween(-5, 1))
+      }
+
+      transitNodes.push({
+        id: `TN-${String(7001 + transitNodes.length).padStart(4, '0')}`,
+        transportId: task.id,
+        name: i === 0 ? '始发仓' : i === nodeCount - 1 ? '目的地仓' : `中转仓${String.fromCharCode(64 + i)}`,
+        location: i === 0 ? task.origin : i === nodeCount - 1 ? task.destination : pick(['杭州', '南京', '合肥', '南昌', '武汉']),
+        status,
+        estimatedTime: generateDateTime(randomBetween(-5 + i * 2, 0 + i * 2)),
+        actualTime,
+        remark: status === '已出发' ? '正常发车' : undefined,
+        order: i + 1,
+      })
+    }
+  })
+
+  return transitNodes
+}
+
+export function generateExceptionReports(transportTasks: TransportTask[]): ExceptionReport[] {
+  const exceptionReports: ExceptionReport[] = []
+  const exceptionTypes: ExceptionType[] = ['车辆故障', '交通拥堵', '天气原因', '货物损坏', '延误', '其他']
+  const exceptionStatuses: ExceptionStatus[] = ['待处理', '处理中', '已解决']
+
+  transportTasks.forEach((task) => {
+    if (task.status !== '已完成' && Math.random() > 0.5) {
+      const type = exceptionTypes[randomBetween(0, exceptionTypes.length - 1)]
+      const status = exceptionStatuses[randomBetween(0, exceptionStatuses.length - 1)]
+      const reportedAt = generateDateTime(randomBetween(-3, 0))
+
+      let handledBy: string | undefined
+      let handledAt: string | undefined
+      let solution: string | undefined
+
+      if (status !== '待处理') {
+        handledBy = pick(['调度员A', '调度员B', '主管'])
+        handledAt = generateDateTime(randomBetween(-2, 0))
+      }
+      if (status === '已解决') {
+        solution = pick(['已更换车辆继续运输', '已绕道行驶', '已重新加固包装', '已协调处理完毕'])
+      }
+
+      exceptionReports.push({
+        id: `EX-${String(8001 + exceptionReports.length).padStart(4, '0')}`,
+        transportId: task.id,
+        type,
+        description: exceptionDescriptions[exceptionTypes.indexOf(type)],
+        status,
+        reporter: pick(['司机', '调度员', '系统监控']),
+        reportedAt,
+        handledBy,
+        handledAt,
+        solution,
+      })
+    }
+  })
+
+  return exceptionReports
+}
+
 export function generateAllData() {
   const demands = generateDemands(14)
   const suppliers = generateSuppliers(8)
   const quotes = generateQuotes(demands, suppliers)
   const approvals = generateApprovals(demands, suppliers, quotes)
   const approvalRecords = generateApprovalRecords(approvals)
-  return { demands, suppliers, quotes, approvals, approvalRecords }
+  const transportTasks = generateTransportTasks(approvals, demands)
+  const transitNodes = generateTransitNodes(transportTasks)
+  const exceptionReports = generateExceptionReports(transportTasks)
+  return { demands, suppliers, quotes, approvals, approvalRecords, transportTasks, transitNodes, exceptionReports }
 }

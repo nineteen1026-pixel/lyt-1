@@ -4,6 +4,7 @@ import Demands from '@/pages/Demands'
 import Quotes from '@/pages/Quotes'
 import Suppliers from '@/pages/Suppliers'
 import Approvals from '@/pages/Approvals'
+import TransportDashboard from '@/pages/TransportDashboard'
 import MockData from '@/pages/MockData'
 
 export default function App() {
@@ -11,11 +12,12 @@ export default function App() {
     <Router>
       <Routes>
         <Route element={<Layout />}>
-          <Route path="/" element={<Navigate to="/demands" replace />} />
+          <Route path="/" element={<Navigate to="/transport" replace />} />
           <Route path="/demands" element={<Demands />} />
           <Route path="/quotes" element={<Quotes />} />
           <Route path="/suppliers" element={<Suppliers />} />
           <Route path="/approvals" element={<Approvals />} />
+          <Route path="/transport" element={<TransportDashboard />} />
           <Route path="/mock" element={<MockData />} />
         </Route>
       </Routes>

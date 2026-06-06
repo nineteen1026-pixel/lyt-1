@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Demand, Quote, Supplier, Approval, ApprovalRecord, DemandStatus, Urgency, ApprovalStatus, ApprovalAction } from '@/types'
+import type { Demand, Quote, Supplier, Approval, ApprovalRecord, DemandStatus, Urgency, ApprovalStatus, ApprovalAction, TransportTask, TransitNode, ExceptionReport, TransportStatus, ExceptionStatus } from '@/types'
 import { generateAllData } from '@/data/mock'
 
 interface SupplyChainStore {
@@ -8,6 +8,9 @@ interface SupplyChainStore {
   suppliers: Supplier[]
   approvals: Approval[]
   approvalRecords: ApprovalRecord[]
+  transportTasks: TransportTask[]
+  transitNodes: TransitNode[]
+  exceptionReports: ExceptionReport[]
 
   addDemand: (demand: Omit<Demand, 'id' | 'createdAt' | 'status'>) => void
   updateDemandStatus: (id: string, status: DemandStatus) => void
@@ -21,6 +24,9 @@ interface SupplyChainStore {
   approveApproval: (approvalId: string, comment?: string) => void
   rejectApproval: (approvalId: string, comment?: string) => void
   selectSupplierAndInitiateApproval: (params: { demandId: string; supplierId: string }) => void
+  updateTransportStatus: (id: string, status: TransportStatus) => void
+  updateExceptionStatus: (id: string, status: ExceptionStatus, solution?: string) => void
+  addExceptionReport: (report: Omit<ExceptionReport, 'id' | 'reportedAt'>) => void
 }
 
 const initialData = generateAllData()
@@ -40,6 +46,9 @@ const useStore = create<SupplyChainStore>((set, get) => ({
   suppliers: initialData.suppliers,
   approvals: initialData.approvals,
   approvalRecords: initialData.approvalRecords,
+  transportTasks: initialData.transportTasks,
+  transitNodes: initialData.transitNodes,
+  exceptionReports: initialData.exceptionReports,
 
   addDemand: (demand) => {
     const id = getNextId('DM', get().demands)
@@ -106,6 +115,9 @@ const useStore = create<SupplyChainStore>((set, get) => ({
       suppliers: freshData.suppliers,
       approvals: freshData.approvals,
       approvalRecords: freshData.approvalRecords,
+      transportTasks: freshData.transportTasks,
+      transitNodes: freshData.transitNodes,
+      exceptionReports: freshData.exceptionReports,
     })
   },
 
@@ -279,6 +291,56 @@ const useStore = create<SupplyChainStore>((set, get) => ({
           action: '提交' as const,
           comment: '供应商直选，提交审批申请',
           timestamp: now,
+        },
+      ],
+    }))
+  },
+
+  updateTransportStatus: (id, status) => {
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 16)
+    set((state) => ({
+      transportTasks: state.transportTasks.map((t) => {
+        if (t.id !== id) return t
+        const updated: TransportTask = { ...t, status }
+        if (status === '运输中' && !t.actualDeparture) {
+          updated.actualDeparture = now
+        }
+        if (status === '已完成' && !t.actualArrival) {
+          updated.actualArrival = now
+        }
+        return updated
+      }),
+    }))
+  },
+
+  updateExceptionStatus: (id, status, solution) => {
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 16)
+    set((state) => ({
+      exceptionReports: state.exceptionReports.map((e) => {
+        if (e.id !== id) return e
+        const updated: ExceptionReport = { ...e, status }
+        if (status !== '待处理' && !e.handledBy) {
+          updated.handledBy = '当前用户'
+          updated.handledAt = now
+        }
+        if (solution) {
+          updated.solution = solution
+        }
+        return updated
+      }),
+    }))
+  },
+
+  addExceptionReport: (report) => {
+    const id = getNextId('EX', get().exceptionReports)
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 16)
+    set((state) => ({
+      exceptionReports: [
+        ...state.exceptionReports,
+        {
+          ...report,
+          id,
+          reportedAt: now,
         },
       ],
     }))
