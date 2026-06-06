@@ -35,11 +35,11 @@ const actionText: Record<string, string> = {
 const steps = ['提交', '初审', '终审']
 
 function getStepIndex(a: Approval, records: ApprovalRecord[]) {
-  const hasFirstReview = records.some((r) => r.approvalId === a.id && r.action === '通过' && r.comment?.includes('初审'))
-  const hasFinalReview = records.some((r) => r.approvalId === a.id && r.action === '通过' && r.comment?.includes('终审'))
+  const approvalRecords = records.filter((r) => r.approvalId === a.id)
+  const passCount = approvalRecords.filter((r) => r.action === '通过').length
   if (a.status === '已通过') return 3
-  if (hasFinalReview) return 3
-  if (hasFirstReview) return 2
+  if (passCount >= 2) return 3
+  if (passCount >= 1) return 2
   return 1
 }
 

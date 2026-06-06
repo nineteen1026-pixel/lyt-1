@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer } from 'recharts'
-import { Users, Award, TrendingUp, Search, Star, Phone, MapPin, X, Shield, CheckCircle, Send } from 'lucide-react'
+import { Users, Award, TrendingUp, Search, Star, Phone, MapPin, X, Shield, CheckCircle } from 'lucide-react'
 import useStore from '@/store/useStore'
 import StatsCard from '@/components/StatsCard'
 import type { Supplier } from '@/types'
@@ -13,12 +13,8 @@ const barColor = (rate: number) =>
 const scoreColor = (score: number) =>
   score >= 85 ? 'text-orange-500' : 'text-blue-500'
 
-function randomBetween(min: number, max: number): number {
-  return Math.floor(Math.random() * (max - min + 1)) + min
-}
-
 export default function Suppliers() {
-  const { suppliers, demands, quotes, initiateApproval, approvals, acceptQuote } = useStore()
+  const { suppliers, demands, selectSupplierAndInitiateApproval } = useStore()
   const [category, setCategory] = useState('全部')
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Supplier | null>(null)
@@ -41,31 +37,10 @@ export default function Suppliers() {
       alert('请先选择要关联的需求')
       return
     }
-    const demand = demands.find(d => d.id === selectedDemandId)
-    if (!demand) return
-
-    const demandQuotes = quotes.filter(q => q.demandId === selectedDemandId)
-    const existingQuote = demandQuotes.find(q => q.supplierId === supplier.id)
-
-    if (existingQuote) {
-      acceptQuote(existingQuote.id, selectedDemandId)
-      initiateApproval({
-        demandId: selectedDemandId,
-        supplierId: supplier.id,
-        totalPrice: existingQuote.price,
-        demandTitle: demand.title,
-        supplierName: supplier.name,
-      })
-    } else {
-      const estimatedPrice = demand.quantity * randomBetween(80, 300)
-      initiateApproval({
-        demandId: selectedDemandId,
-        supplierId: supplier.id,
-        totalPrice: estimatedPrice,
-        demandTitle: demand.title,
-        supplierName: supplier.name,
-      })
-    }
+    selectSupplierAndInitiateApproval({
+      demandId: selectedDemandId,
+      supplierId: supplier.id,
+    })
     setSelectedDemandId('')
   }
 

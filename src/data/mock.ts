@@ -159,11 +159,16 @@ export function generateApprovals(demands: Demand[], suppliers: Supplier[], quot
     .filter((d) => ['已选商', '审批中', '已完成'].includes(d.status))
     .forEach((demand) => {
       const demandQuotes = quotes.filter((q) => q.demandId === demand.id)
-      const bestQuote = demandQuotes.sort((a, b) => a.price - b.price)[0]
-      if (!bestQuote) return
+      const acceptedQuote = demandQuotes.find((q) => q.status === '已采纳')
+      const quoteToUse = acceptedQuote || demandQuotes[0]
+      if (!quoteToUse) return
 
-      const supplier = suppliers.find((s) => s.id === bestQuote.supplierId)
+      const supplier = suppliers.find((s) => s.id === quoteToUse.supplierId)
       if (!supplier) return
+
+      if (!acceptedQuote) {
+        quoteToUse.status = '已采纳'
+      }
 
       approvals.push({
         id: `AP-${String(4001 + approvals.length).padStart(4, '0')}`,
@@ -173,7 +178,7 @@ export function generateApprovals(demands: Demand[], suppliers: Supplier[], quot
         createdAt: generateDateTime(randomBetween(-15, -1)),
         demandTitle: demand.title,
         supplierName: supplier.name,
-        totalPrice: bestQuote.price,
+        totalPrice: quoteToUse.price,
       })
     })
 

@@ -20,6 +20,7 @@ interface SupplyChainStore {
   initiateApproval: (params: { demandId: string; supplierId: string; totalPrice: number; demandTitle: string; supplierName: string }) => void
   approveApproval: (approvalId: string, comment?: string) => void
   rejectApproval: (approvalId: string, comment?: string) => void
+  selectSupplierAndInitiateApproval: (params: { demandId: string; supplierId: string }) => void
 }
 
 const initialData = generateAllData()
@@ -159,9 +160,9 @@ const useStore = create<SupplyChainStore>((set, get) => ({
     if (!approval) return
 
     const records = state.approvalRecords.filter((r) => r.approvalId === approvalId)
-    const hasFirstReview = records.some((r) => r.action === '通过' && r.comment?.includes('初审'))
-    const step = hasFirstReview ? '终审' : '初审'
-    const newStatus: ApprovalStatus = hasFirstReview ? '已通过' : '审批中'
+    const passCount = records.filter((r) => r.action === '通过').length
+    const step = passCount === 0 ? '初审' : '终审'
+    const newStatus: ApprovalStatus = passCount >= 1 ? '已通过' : '审批中'
     const now = new Date().toISOString().replace('T', ' ').slice(0, 16)
     const recordId = getNextId('AR', state.approvalRecords)
 
@@ -206,6 +207,75 @@ const useStore = create<SupplyChainStore>((set, get) => ({
         },
       ],
       demands: s.demands.map((d) => (d.id === approval.demandId ? { ...d, status: '已选商' as const } : d)),
+    }))
+  },
+
+  selectSupplierAndInitiateApproval: ({ demandId, supplierId }) => {
+    const state = get()
+    const demand = state.demands.find((d) => d.id === demandId)
+    const supplier = state.suppliers.find((s) => s.id === supplierId)
+    if (!demand || !supplier) return
+
+    const demandQuotes = state.quotes.filter((q) => q.demandId === demandId)
+    let selectedQuote = demandQuotes.find((q) => q.supplierId === supplierId)
+    let newQuotes = [...state.quotes]
+
+    if (!selectedQuote) {
+      const estimatedPrice = Math.round(demand.quantity * (80 + Math.random() * 220) * 100) / 100
+      selectedQuote = {
+        id: getNextId('QT', state.quotes),
+        demandId,
+        supplierId,
+        price: estimatedPrice,
+        transitDays: Math.floor(Math.random() * 12) + 2,
+        serviceScore: Math.floor(Math.random() * 25) + 75,
+        validUntil: (() => {
+          const d = new Date()
+          d.setDate(d.getDate() + 20)
+          return d.toISOString().split('T')[0]
+        })(),
+        status: '已采纳',
+        remarks: '供应商直选生成报价',
+      }
+      newQuotes.push(selectedQuote)
+    } else {
+      newQuotes = newQuotes.map((q) => {
+        if (q.demandId !== demandId) return q
+        return { ...q, status: q.supplierId === supplierId ? '已采纳' as const : '有效' as const }
+      })
+    }
+
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 16)
+    const approvalId = getNextId('AP', state.approvals)
+    const recordId = getNextId('AR', state.approvalRecords)
+
+    set((s) => ({
+      quotes: newQuotes,
+      demands: s.demands.map((d) => (d.id === demandId ? { ...d, status: '审批中' as const } : d)),
+      approvals: [
+        ...s.approvals,
+        {
+          id: approvalId,
+          demandId,
+          supplierId,
+          status: '待审批' as const,
+          createdAt: now,
+          demandTitle: demand.title,
+          supplierName: supplier.name,
+          totalPrice: selectedQuote!.price,
+        },
+      ],
+      approvalRecords: [
+        ...s.approvalRecords,
+        {
+          id: recordId,
+          approvalId,
+          approver: '当前用户',
+          action: '提交' as const,
+          comment: '供应商直选，提交审批申请',
+          timestamp: now,
+        },
+      ],
     }))
   },
 }))
