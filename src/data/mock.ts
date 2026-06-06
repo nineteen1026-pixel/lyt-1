@@ -1,4 +1,4 @@
-import type { Demand, Quote, Supplier, Approval, ApprovalRecord, TransportTask, TransitNode, ExceptionReport, TransportStatus, TransitNodeStatus, ExceptionStatus, ExceptionType, ExceptionSeverity } from '@/types'
+import type { Demand, Quote, Supplier, Approval, ApprovalRecord, TransportTask, TransitNode, ExceptionReport, TransportStatus, TransitNodeStatus, ExceptionStatus, ExceptionType, ExceptionSeverity, RouteCostAnalysis, CargoTypeCostAnalysis, SupplierCostAnalysis, QuoteComparison, CostAnalysisSummary } from '@/types'
 
 const cargoTypes = ['电子元器件', '机械零部件', '化工原料', '食品饮料', '纺织原料', '医疗器械', '汽车配件', '建材物资']
 const origins = ['上海浦东', '深圳盐田', '广州黄埔', '宁波北仑', '天津新港', '青岛前湾', '大连大窑湾', '厦门海沧']
@@ -427,6 +427,196 @@ export function generateExceptionReports(transportTasks: TransportTask[]): Excep
   return exceptionReports
 }
 
+export function generateRouteCostAnalysis(demands: Demand[], transportTasks: TransportTask[]): RouteCostAnalysis[] {
+  const routeMap = new Map<string, { origin: string; destination: string; costs: number[]; days: number[] }>()
+
+  transportTasks.forEach((task) => {
+    const routeKey = `${task.origin}-${task.destination}`
+    if (!routeMap.has(routeKey)) {
+      routeMap.set(routeKey, { origin: task.origin, destination: task.destination, costs: [], days: [] })
+    }
+    const route = routeMap.get(routeKey)!
+    route.costs.push(task.totalPrice)
+    route.days.push(randomBetween(2, 10))
+  })
+
+  const trends: Array<'up' | 'down' | 'stable'> = ['up', 'down', 'stable']
+
+  return Array.from(routeMap.entries()).map(([routeKey, data], i) => {
+    const totalCost = data.costs.reduce((a, b) => a + b, 0)
+    const avgCostPerUnit = totalCost / data.costs.length
+    return {
+      id: `RC-${String(9001 + i).padStart(4, '0')}`,
+      route: routeKey,
+      origin: data.origin,
+      destination: data.destination,
+      totalShipments: data.costs.length,
+      avgCostPerUnit: Math.round(avgCostPerUnit * 100) / 100,
+      minCost: Math.min(...data.costs),
+      maxCost: Math.max(...data.costs),
+      totalCost: Math.round(totalCost * 100) / 100,
+      avgTransitDays: Math.round(data.days.reduce((a, b) => a + b, 0) / data.days.length * 10) / 10,
+      costTrend: trends[randomBetween(0, 2)],
+    }
+  })
+}
+
+export function generateCargoTypeCostAnalysis(demands: Demand[], transportTasks: TransportTask[]): CargoTypeCostAnalysis[] {
+  const cargoMap = new Map<string, { shipments: number; costs: number[]; quantities: number[]; lossAmounts: number[] }>()
+
+  cargoTypes.forEach((type) => {
+    cargoMap.set(type, { shipments: 0, costs: [], quantities: [], lossAmounts: [] })
+  })
+
+  transportTasks.forEach((task) => {
+    const cargo = cargoMap.get(task.cargoType)
+    if (cargo) {
+      cargo.shipments++
+      cargo.costs.push(task.totalPrice)
+      cargo.quantities.push(task.quantity)
+      cargo.lossAmounts.push(Math.random() > 0.7 ? randomBetween(100, 3000) : 0)
+    }
+  })
+
+  const allCosts = Array.from(cargoMap.values()).flatMap((c) => c.costs)
+  const totalAllCost = allCosts.reduce((a, b) => a + b, 0)
+
+  return Array.from(cargoMap.entries())
+    .filter(([_, data]) => data.shipments > 0)
+    .map(([cargoType, data], i) => {
+      const totalCost = data.costs.reduce((a, b) => a + b, 0)
+      const totalQuantity = data.quantities.reduce((a, b) => a + b, 0)
+      const totalLoss = data.lossAmounts.reduce((a, b) => a + b, 0)
+      return {
+        id: `CC-${String(9101 + i).padStart(4, '0')}`,
+        cargoType,
+        totalShipments: data.shipments,
+        totalCost: Math.round(totalCost * 100) / 100,
+        avgCostPerUnit: Math.round(totalCost / data.shipments * 100) / 100,
+        avgCostPerKg: Math.round(totalCost / totalQuantity * 100) / 100,
+        costPercentage: Math.round((totalCost / totalAllCost) * 10000) / 100,
+        lossAmount: totalLoss,
+        lossRate: Math.round((totalLoss / totalCost) * 10000) / 100,
+      }
+    })
+}
+
+export function generateSupplierCostAnalysis(suppliers: Supplier[], quotes: Quote[], transportTasks: TransportTask[]): SupplierCostAnalysis[] {
+  return suppliers.map((supplier, i) => {
+    const supplierQuotes = quotes.filter((q) => q.supplierId === supplier.id)
+    const acceptedQuotes = supplierQuotes.filter((q) => q.status === '已采纳')
+    const supplierTasks = transportTasks.filter((t) => t.supplierId === supplier.id)
+    const totalQuotePrice = supplierQuotes.reduce((a, b) => a + b.price, 0)
+    const totalAcceptedPrice = acceptedQuotes.reduce((a, b) => a + b.price, 0)
+    const totalCost = supplierTasks.reduce((a, b) => a + b.totalPrice, 0)
+    const avgTransitDays = acceptedQuotes.length > 0
+      ? Math.round(acceptedQuotes.reduce((a, b) => a + b.transitDays, 0) / acceptedQuotes.length * 10) / 10
+      : 0
+
+    const allQuotesAvg = quotes.length > 0 ? quotes.reduce((a, b) => a + b.price, 0) / quotes.length : 0
+    const supplierAvg = supplierQuotes.length > 0 ? totalQuotePrice / supplierQuotes.length : allQuotesAvg
+    const priceCompetitiveness = allQuotesAvg > 0 ? Math.round((1 - supplierAvg / allQuotesAvg) * 1000) / 10 : 0
+
+    const onTimeRate = Math.round(randomBetween(75, 98) * 10) / 10
+    const costSaving = Math.round(totalCost * (randomBetween(5, 20) / 100) * 100) / 100
+
+    return {
+      id: `SC-${String(9201 + i).padStart(4, '0')}`,
+      supplierId: supplier.id,
+      supplierName: supplier.name,
+      totalQuotes: supplierQuotes.length,
+      acceptedQuotes: acceptedQuotes.length,
+      avgQuotePrice: supplierQuotes.length > 0 ? Math.round(totalQuotePrice / supplierQuotes.length * 100) / 100 : 0,
+      avgAcceptedPrice: acceptedQuotes.length > 0 ? Math.round(totalAcceptedPrice / acceptedQuotes.length * 100) / 100 : 0,
+      totalCost: Math.round(totalCost * 100) / 100,
+      priceCompetitiveness,
+      avgTransitDays,
+      onTimeRate,
+      costSaving,
+    }
+  })
+}
+
+export function generateQuoteComparisons(demands: Demand[], quotes: Quote[], suppliers: Supplier[]): QuoteComparison[] {
+  return demands
+    .filter((d) => quotes.some((q) => q.demandId === d.id))
+    .map((demand) => {
+      const demandQuotes = quotes.filter((q) => q.demandId === demand.id)
+      const enrichedQuotes = demandQuotes.map((q) => {
+        const supplier = suppliers.find((s) => s.id === q.supplierId)
+        return {
+          quoteId: q.id,
+          supplierId: q.supplierId,
+          supplierName: supplier?.name || '未知供应商',
+          price: q.price,
+          transitDays: q.transitDays,
+          serviceScore: q.serviceScore,
+          status: q.status,
+          isAccepted: q.status === '已采纳',
+        }
+      })
+
+      const acceptedQuote = enrichedQuotes.find((q) => q.isAccepted)
+      const avgPrice = enrichedQuotes.reduce((a, b) => a + b.price, 0) / enrichedQuotes.length
+      const finalCost = acceptedQuote?.price || 0
+      const finalSupplier = acceptedQuote?.supplierName || '未确定'
+      const savingAmount = Math.round((avgPrice - finalCost) * 100) / 100
+      const savingPercentage = avgPrice > 0 ? Math.round((savingAmount / avgPrice) * 10000) / 100 : 0
+
+      return {
+        demandId: demand.id,
+        demandTitle: demand.title,
+        cargoType: demand.cargoType,
+        origin: demand.origin,
+        destination: demand.destination,
+        quantity: demand.quantity,
+        unit: demand.unit,
+        quotes: enrichedQuotes,
+        finalCost,
+        finalSupplier,
+        savingAmount,
+        savingPercentage,
+      }
+    })
+}
+
+export function generateCostAnalysisSummary(
+  routeCosts: RouteCostAnalysis[],
+  cargoCosts: CargoTypeCostAnalysis[],
+  supplierCosts: SupplierCostAnalysis[],
+  quoteComparisons: QuoteComparison[]
+): CostAnalysisSummary {
+  const totalCost = routeCosts.reduce((a, b) => a + b.totalCost, 0)
+  const totalShipments = routeCosts.reduce((a, b) => a + b.totalShipments, 0)
+  const avgCostPerShipment = totalShipments > 0 ? Math.round(totalCost / totalShipments * 100) / 100 : 0
+
+  const totalSaving = quoteComparisons.reduce((a, b) => a + b.savingAmount, 0)
+  const avgSavingPercentage = quoteComparisons.length > 0
+    ? Math.round(quoteComparisons.reduce((a, b) => a + b.savingPercentage, 0) / quoteComparisons.length * 100) / 100
+    : 0
+
+  const topRoute = routeCosts.length > 0
+    ? routeCosts.sort((a, b) => b.totalShipments - a.totalShipments)[0].route
+    : '-'
+  const topCargoType = cargoCosts.length > 0
+    ? cargoCosts.sort((a, b) => b.totalCost - a.totalCost)[0].cargoType
+    : '-'
+  const topSupplier = supplierCosts.length > 0
+    ? supplierCosts.sort((a, b) => b.totalCost - a.totalCost)[0].supplierName
+    : '-'
+
+  return {
+    totalCost: Math.round(totalCost * 100) / 100,
+    totalShipments,
+    avgCostPerShipment,
+    costSavingTotal: Math.round(totalSaving * 100) / 100,
+    avgSavingPercentage,
+    topRoute,
+    topCargoType,
+    topSupplier,
+  }
+}
+
 export function generateAllData() {
   const demands = generateDemands(14)
   const suppliers = generateSuppliers(8)
@@ -436,5 +626,29 @@ export function generateAllData() {
   const transportTasks = generateTransportTasks(approvals, demands)
   const transitNodes = generateTransitNodes(transportTasks)
   const exceptionReports = generateExceptionReports(transportTasks)
-  return { demands, suppliers, quotes, approvals, approvalRecords, transportTasks, transitNodes, exceptionReports }
+  const routeCostAnalysis = generateRouteCostAnalysis(demands, transportTasks)
+  const cargoTypeCostAnalysis = generateCargoTypeCostAnalysis(demands, transportTasks)
+  const supplierCostAnalysis = generateSupplierCostAnalysis(suppliers, quotes, transportTasks)
+  const quoteComparisons = generateQuoteComparisons(demands, quotes, suppliers)
+  const costAnalysisSummary = generateCostAnalysisSummary(
+    routeCostAnalysis,
+    cargoTypeCostAnalysis,
+    supplierCostAnalysis,
+    quoteComparisons
+  )
+  return {
+    demands,
+    suppliers,
+    quotes,
+    approvals,
+    approvalRecords,
+    transportTasks,
+    transitNodes,
+    exceptionReports,
+    routeCostAnalysis,
+    cargoTypeCostAnalysis,
+    supplierCostAnalysis,
+    quoteComparisons,
+    costAnalysisSummary,
+  }
 }

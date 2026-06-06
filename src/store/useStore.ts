@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Demand, Quote, Supplier, Approval, ApprovalRecord, DemandStatus, Urgency, ApprovalStatus, ApprovalAction, TransportTask, TransitNode, ExceptionReport, TransportStatus, ExceptionStatus, ExceptionType, ExceptionSeverity } from '@/types'
+import type { Demand, Quote, Supplier, Approval, ApprovalRecord, DemandStatus, Urgency, ApprovalStatus, ApprovalAction, TransportTask, TransitNode, ExceptionReport, TransportStatus, ExceptionStatus, ExceptionType, ExceptionSeverity, RouteCostAnalysis, CargoTypeCostAnalysis, SupplierCostAnalysis, QuoteComparison, CostAnalysisSummary } from '@/types'
 import { generateAllData } from '@/data/mock'
 
 interface SupplyChainStore {
@@ -11,6 +11,11 @@ interface SupplyChainStore {
   transportTasks: TransportTask[]
   transitNodes: TransitNode[]
   exceptionReports: ExceptionReport[]
+  routeCostAnalysis: RouteCostAnalysis[]
+  cargoTypeCostAnalysis: CargoTypeCostAnalysis[]
+  supplierCostAnalysis: SupplierCostAnalysis[]
+  quoteComparisons: QuoteComparison[]
+  costAnalysisSummary: CostAnalysisSummary
 
   addDemand: (demand: Omit<Demand, 'id' | 'createdAt' | 'status'>) => void
   updateDemandStatus: (id: string, status: DemandStatus) => void
@@ -70,6 +75,11 @@ const useStore = create<SupplyChainStore>((set, get) => ({
   transportTasks: initialData.transportTasks,
   transitNodes: initialData.transitNodes,
   exceptionReports: initialData.exceptionReports,
+  routeCostAnalysis: initialData.routeCostAnalysis,
+  cargoTypeCostAnalysis: initialData.cargoTypeCostAnalysis,
+  supplierCostAnalysis: initialData.supplierCostAnalysis,
+  quoteComparisons: initialData.quoteComparisons,
+  costAnalysisSummary: initialData.costAnalysisSummary,
 
   addDemand: (demand) => {
     const id = getNextId('DM', get().demands)
@@ -139,6 +149,11 @@ const useStore = create<SupplyChainStore>((set, get) => ({
       transportTasks: freshData.transportTasks,
       transitNodes: freshData.transitNodes,
       exceptionReports: freshData.exceptionReports,
+      routeCostAnalysis: freshData.routeCostAnalysis,
+      cargoTypeCostAnalysis: freshData.cargoTypeCostAnalysis,
+      supplierCostAnalysis: freshData.supplierCostAnalysis,
+      quoteComparisons: freshData.quoteComparisons,
+      costAnalysisSummary: freshData.costAnalysisSummary,
     })
   },
 

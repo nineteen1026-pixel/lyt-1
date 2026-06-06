@@ -7,6 +7,7 @@ import {
   Database,
   LayoutDashboard,
   Truck,
+  BarChart3,
 } from 'lucide-react'
 
 const navItems = [
@@ -15,6 +16,7 @@ const navItems = [
   { path: '/quotes', label: '报价对比', icon: GitCompareArrows },
   { path: '/suppliers', label: '供应商选择', icon: Users },
   { path: '/approvals', label: '审批状态', icon: CheckCircle },
+  { path: '/cost-analysis', label: '成本分析', icon: BarChart3 },
   { path: '/mock', label: '数据 Mock', icon: Database },
 ]
 

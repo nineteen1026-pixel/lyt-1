@@ -6,6 +6,7 @@ import Suppliers from '@/pages/Suppliers'
 import Approvals from '@/pages/Approvals'
 import TransportDashboard from '@/pages/TransportDashboard'
 import MockData from '@/pages/MockData'
+import CostAnalysis from '@/pages/CostAnalysis'
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
           <Route path="/suppliers" element={<Suppliers />} />
           <Route path="/approvals" element={<Approvals />} />
           <Route path="/transport" element={<TransportDashboard />} />
+          <Route path="/cost-analysis" element={<CostAnalysis />} />
           <Route path="/mock" element={<MockData />} />
         </Route>
       </Routes>

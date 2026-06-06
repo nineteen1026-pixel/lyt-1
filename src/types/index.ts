@@ -127,3 +127,79 @@ export interface ExceptionReport {
   scoreImpact?: number
   delayHours?: number
 }
+
+export interface RouteCostAnalysis {
+  id: string
+  route: string
+  origin: string
+  destination: string
+  totalShipments: number
+  avgCostPerUnit: number
+  minCost: number
+  maxCost: number
+  totalCost: number
+  avgTransitDays: number
+  costTrend: 'up' | 'down' | 'stable'
+}
+
+export interface CargoTypeCostAnalysis {
+  id: string
+  cargoType: string
+  totalShipments: number
+  totalCost: number
+  avgCostPerUnit: number
+  avgCostPerKg: number
+  costPercentage: number
+  lossAmount: number
+  lossRate: number
+}
+
+export interface SupplierCostAnalysis {
+  id: string
+  supplierId: string
+  supplierName: string
+  totalQuotes: number
+  acceptedQuotes: number
+  avgQuotePrice: number
+  avgAcceptedPrice: number
+  totalCost: number
+  priceCompetitiveness: number
+  avgTransitDays: number
+  onTimeRate: number
+  costSaving: number
+}
+
+export interface QuoteComparison {
+  demandId: string
+  demandTitle: string
+  cargoType: string
+  origin: string
+  destination: string
+  quantity: number
+  unit: string
+  quotes: Array<{
+    quoteId: string
+    supplierId: string
+    supplierName: string
+    price: number
+    transitDays: number
+    serviceScore: number
+    status: string
+    isAccepted: boolean
+  }>
+  finalCost: number
+  finalSupplier: string
+  savingAmount: number
+  savingPercentage: number
+}
+
+export interface CostAnalysisSummary {
+  totalCost: number
+  totalShipments: number
+  avgCostPerShipment: number
+  costSavingTotal: number
+  avgSavingPercentage: number
+  topRoute: string
+  topCargoType: string
+  topSupplier: string
+}
