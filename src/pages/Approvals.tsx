@@ -44,7 +44,7 @@ function getStepIndex(a: Approval, records: ApprovalRecord[]) {
 }
 
 export default function Approvals() {
-  const { approvals, approvalRecords, updateApprovalStatus, addApprovalRecord } = useStore()
+  const { approvals, approvalRecords, approveApproval, rejectApproval } = useStore()
   const [filter, setFilter] = useState<'全部' | Approval['status']>('全部')
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
@@ -65,21 +65,11 @@ export default function Approvals() {
   const handleAction = (approval: Approval, action: '通过' | '驳回') => {
     const stepLabel = action === '通过' ? (getStepIndex(approval, approvalRecords) === 1 ? '初审' : '终审') : ''
     const comment = prompt(`请输入${action}意见${stepLabel ? `（${stepLabel}）` : ''}：`) || (action === '通过' ? '同意' : '不通过')
-    let newStatus: Approval['status']
-    if (action === '驳回') {
-      newStatus = '已驳回'
+    if (action === '通过') {
+      approveApproval(approval.id, comment)
     } else {
-      const step = getStepIndex(approval, approvalRecords)
-      newStatus = step >= 2 ? '已通过' : '审批中'
+      rejectApproval(approval.id, comment)
     }
-    updateApprovalStatus(approval.id, newStatus)
-    addApprovalRecord({
-      approvalId: approval.id,
-      approver: '当前用户',
-      action,
-      comment,
-      timestamp: new Date().toISOString().replace('T', ' ').slice(0, 16),
-    })
   }
 
   return (

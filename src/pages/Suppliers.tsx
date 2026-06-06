@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer } from 'recharts'
-import { Users, Award, TrendingUp, Search, Star, Phone, MapPin, X, Shield } from 'lucide-react'
+import { Users, Award, TrendingUp, Search, Star, Phone, MapPin, X, Shield, CheckCircle, Send } from 'lucide-react'
 import useStore from '@/store/useStore'
 import StatsCard from '@/components/StatsCard'
 import type { Supplier } from '@/types'
@@ -13,11 +13,20 @@ const barColor = (rate: number) =>
 const scoreColor = (score: number) =>
   score >= 85 ? 'text-orange-500' : 'text-blue-500'
 
+function randomBetween(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min
+}
+
 export default function Suppliers() {
-  const suppliers = useStore((s) => s.suppliers)
+  const { suppliers, demands, quotes, initiateApproval, approvals, acceptQuote } = useStore()
   const [category, setCategory] = useState('全部')
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Supplier | null>(null)
+  const [selectedDemandId, setSelectedDemandId] = useState('')
+
+  const selectableDemands = useMemo(() => {
+    return demands.filter(d => ['待报价', '报价中', '已选商'].includes(d.status))
+  }, [demands])
 
   const filtered = useMemo(() => {
     return suppliers.filter((s) => {
@@ -26,6 +35,39 @@ export default function Suppliers() {
       return matchCat && matchSearch
     })
   }, [suppliers, category, search])
+
+  const handleSelectSupplier = (supplier: Supplier) => {
+    if (!selectedDemandId) {
+      alert('请先选择要关联的需求')
+      return
+    }
+    const demand = demands.find(d => d.id === selectedDemandId)
+    if (!demand) return
+
+    const demandQuotes = quotes.filter(q => q.demandId === selectedDemandId)
+    const existingQuote = demandQuotes.find(q => q.supplierId === supplier.id)
+
+    if (existingQuote) {
+      acceptQuote(existingQuote.id, selectedDemandId)
+      initiateApproval({
+        demandId: selectedDemandId,
+        supplierId: supplier.id,
+        totalPrice: existingQuote.price,
+        demandTitle: demand.title,
+        supplierName: supplier.name,
+      })
+    } else {
+      const estimatedPrice = demand.quantity * randomBetween(80, 300)
+      initiateApproval({
+        demandId: selectedDemandId,
+        supplierId: supplier.id,
+        totalPrice: estimatedPrice,
+        demandTitle: demand.title,
+        supplierName: supplier.name,
+      })
+    }
+    setSelectedDemandId('')
+  }
 
   const stats = useMemo(() => {
     const total = suppliers.length
@@ -61,7 +103,17 @@ export default function Suppliers() {
     <div className="animate-fade-in-up space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <h1 className="text-2xl font-bold text-brand-500">供应商选择</h1>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <select
+            value={selectedDemandId}
+            onChange={(e) => setSelectedDemandId(e.target.value)}
+            className="border border-surface-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-accent-400"
+          >
+            <option value="">选择关联需求（可选）</option>
+            {selectableDemands.map((d) => (
+              <option key={d.id} value={d.id}>{d.title} · {d.status}</option>
+            ))}
+          </select>
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
@@ -122,12 +174,22 @@ export default function Suppliers() {
               </div>
             </div>
 
-            <button
-              onClick={() => setSelected(s)}
-              className="mt-auto w-full py-2 text-sm font-medium text-accent-500 bg-accent-50 rounded-lg hover:bg-accent-100 transition-colors"
-            >
-              查看评估
-            </button>
+            <div className="mt-auto flex gap-2">
+              <button
+                onClick={() => setSelected(s)}
+                className="flex-1 py-2 text-sm font-medium text-accent-500 bg-accent-50 rounded-lg hover:bg-accent-100 transition-colors"
+              >
+                查看评估
+              </button>
+              {selectedDemandId && (
+                <button
+                  onClick={() => handleSelectSupplier(s)}
+                  className="flex-1 py-2 text-sm font-medium text-white bg-brand-500 rounded-lg hover:bg-brand-600 transition-colors flex items-center justify-center gap-1"
+                >
+                  <CheckCircle className="w-3.5 h-3.5" /> 选择
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>

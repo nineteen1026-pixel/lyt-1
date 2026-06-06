@@ -116,20 +116,36 @@ export function generateQuotes(demands: Demand[], suppliers: Supplier[]): Quote[
     const quoteCount = randomBetween(2, 4)
     const shuffled = [...suppliers].sort(() => Math.random() - 0.5).slice(0, quoteCount)
 
+    const demandQuotes: Quote[] = []
     shuffled.forEach((supplier, j) => {
       const basePrice = demand.quantity * randomBetween(80, 300)
-      quotes.push({
-        id: `QT-${String(3001 + quotes.length).padStart(4, '0')}`,
+      demandQuotes.push({
+        id: `QT-${String(3001 + quotes.length + demandQuotes.length).padStart(4, '0')}`,
         demandId: demand.id,
         supplierId: supplier.id,
         price: Math.round(basePrice * (1 + (j * 0.05)) * 100) / 100,
         transitDays: randomBetween(2, 15),
         serviceScore: randomBetween(70, 98),
         validUntil: generateDate(randomBetween(5, 30)),
-        status: demand.status === '已完成' ? '已采纳' : pick(statuses),
+        status: '有效',
         remarks: pick(['含保险', '含装卸', '门到门服务', '可开增值税发票', '全程温控', '优先发车']),
       })
     })
+
+    if (demand.status === '已完成') {
+      const bestIdx = demandQuotes.findIndex(q => q.price === Math.min(...demandQuotes.map(q => q.price)))
+      if (bestIdx >= 0) demandQuotes[bestIdx].status = '已采纳'
+    } else if (demand.status === '审批中' || demand.status === '已选商') {
+      const pickedIdx = weightedRandom([6, 4])
+      if (pickedIdx < demandQuotes.length) demandQuotes[pickedIdx].status = '已采纳'
+    } else if (demand.status === '报价中') {
+      const hasExpired = weightedRandom([3, 7])
+      if (hasExpired === 0 && demandQuotes.length > 1) {
+        demandQuotes[demandQuotes.length - 1].status = '已过期'
+      }
+    }
+
+    quotes.push(...demandQuotes)
   })
 
   return quotes

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
-import { GitCompareArrows, Trophy, TrendingDown, Star, Clock } from 'lucide-react'
+import { GitCompareArrows, Trophy, TrendingDown, Star, Clock, CheckCircle, Send } from 'lucide-react'
 import useStore from '@/store/useStore'
 import StatsCard from '@/components/StatsCard'
 import type { Demand, Quote, Supplier } from '@/types'
@@ -13,7 +13,7 @@ const rankBadge = (rank: number) => {
 }
 
 export default function Quotes() {
-  const { demands, quotes, suppliers } = useStore()
+  const { demands, quotes, suppliers, acceptQuote, initiateApproval, approvals } = useStore()
   const [selectedDemandId, setSelectedDemandId] = useState<string>('')
 
   const demandsWithQuotes = useMemo(
@@ -22,6 +22,7 @@ export default function Quotes() {
   )
 
   const activeDemandId = selectedDemandId || demandsWithQuotes[0]?.id || ''
+  const activeDemand = demands.find(d => d.id === activeDemandId)
 
   const filteredQuotes = useMemo(
     () => quotes.filter((q) => q.demandId === activeDemandId),
@@ -164,9 +165,33 @@ export default function Quotes() {
           </div>
 
           <div className="bg-white rounded-xl shadow-sm border border-surface-100 p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Trophy className="w-5 h-5 text-accent-500" />
-              <h2 className="text-lg font-bold text-brand-500">综合排名</h2>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-accent-500" />
+                <h2 className="text-lg font-bold text-brand-500">综合排名</h2>
+              </div>
+              {activeDemand && !approvals.some(a => a.demandId === activeDemand.id) && ranked.some(r => r.status === '已采纳') && (
+                <button
+                  onClick={() => {
+                    const accepted = ranked.find(r => r.status === '已采纳')
+                    if (accepted && activeDemand) {
+                      initiateApproval({
+                        demandId: activeDemand.id,
+                        supplierId: accepted.supplierId,
+                        totalPrice: accepted.price,
+                        demandTitle: activeDemand.title,
+                        supplierName: accepted.supplierName,
+                      })
+                    }
+                  }}
+                  className="px-4 py-2 rounded-lg bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium transition-colors flex items-center gap-1.5"
+                >
+                  <Send className="w-4 h-4" /> 发起审批
+                </button>
+              )}
+              {activeDemand && approvals.some(a => a.demandId === activeDemand.id) && (
+                <span className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 text-sm font-medium">已发起审批</span>
+              )}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {ranked.map((q, i) => (
@@ -187,6 +212,19 @@ export default function Quotes() {
                       价格 ¥{q.price.toLocaleString()} · {q.transitDays}天 · 评分{q.serviceScore}
                     </p>
                     <p className="text-sm font-bold text-accent-500 mt-1">综合得分 {q.composite}</p>
+                    <div className="mt-2 flex items-center gap-2">
+                      {q.status === '已采纳' && (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">已采纳</span>
+                      )}
+                      {activeDemand && activeDemand.status === '报价中' && q.status === '有效' && (
+                        <button
+                          onClick={() => acceptQuote(q.id, activeDemand.id)}
+                          className="flex-1 py-1.5 rounded-md bg-accent-500 hover:bg-accent-600 text-white text-xs font-medium transition-colors flex items-center justify-center gap-1"
+                        >
+                          <CheckCircle className="w-3.5 h-3.5" /> 采纳
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}

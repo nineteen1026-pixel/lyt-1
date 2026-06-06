@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Plus, Search, Filter, Package, Clock, CheckCircle2, XCircle, ArrowRight, X } from 'lucide-react'
+import { Plus, Search, Filter, Package, Clock, CheckCircle2, XCircle, ArrowRight, X, CheckCircle, Send } from 'lucide-react'
 import useStore from '@/store/useStore'
 import StatsCard from '@/components/StatsCard'
 import type { Demand, DemandStatus, Urgency } from '@/types'
@@ -31,7 +31,7 @@ const initForm = {
 }
 
 export default function Demands() {
-  const { demands, addDemand, quotes, suppliers } = useStore()
+  const { demands, addDemand, quotes, suppliers, acceptQuote, initiateApproval, approvals } = useStore()
   const [showModal, setShowModal] = useState(false)
   const [selected, setSelected] = useState<Demand | null>(null)
   const [statusFilter, setStatusFilter] = useState('')
@@ -232,7 +232,7 @@ export default function Demands() {
                   <h4 className="text-sm font-semibold text-surface-800 mb-3">相关报价 ({relatedQuotes.length})</h4>
                   <div className="space-y-3">
                     {relatedQuotes.map(q => (
-                      <div key={q.id} className="bg-surface-50 rounded-lg p-3 text-sm space-y-1">
+                      <div key={q.id} className="bg-surface-50 rounded-lg p-3 text-sm space-y-2">
                         <div className="flex justify-between items-center">
                           <span className="font-medium text-surface-800">{q.supplierName}</span>
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${q.status === '有效' ? 'bg-green-100 text-green-700' : q.status === '已采纳' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{q.status}</span>
@@ -243,9 +243,45 @@ export default function Demands() {
                           <span>服务评分: {q.serviceScore}</span>
                         </div>
                         {q.remarks && <p className="text-surface-400 text-xs">{q.remarks}</p>}
+                        {selected && selected.status === '报价中' && q.status === '有效' && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              acceptQuote(q.id, selected.id)
+                            }}
+                            className="mt-2 w-full py-1.5 rounded-md bg-accent-500 hover:bg-accent-600 text-white text-xs font-medium transition-colors flex items-center justify-center gap-1"
+                          >
+                            <CheckCircle className="w-3.5 h-3.5" /> 采纳此报价
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+              {selected && selected.status === '已选商' && !approvals.some(a => a.demandId === selected.id) && (
+                <button
+                  onClick={() => {
+                    const acceptedQuote = relatedQuotes.find(q => q.status === '已采纳')
+                    const supplier = suppliers.find(s => s.id === acceptedQuote?.supplierId)
+                    if (acceptedQuote && supplier) {
+                      initiateApproval({
+                        demandId: selected.id,
+                        supplierId: supplier.id,
+                        totalPrice: acceptedQuote.price,
+                        demandTitle: selected.title,
+                        supplierName: supplier.name,
+                      })
+                    }
+                  }}
+                  className="w-full py-2.5 rounded-lg bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                >
+                  <Send className="w-4 h-4" /> 发起审批
+                </button>
+              )}
+              {selected && approvals.some(a => a.demandId === selected.id) && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700">
+                  该需求已发起审批，请前往审批状态页面查看
                 </div>
               )}
               {relatedQuotes.length === 0 && (
