@@ -7,6 +7,7 @@ import Approvals from '@/pages/Approvals'
 import TransportDashboard from '@/pages/TransportDashboard'
 import MockData from '@/pages/MockData'
 import CostAnalysis from '@/pages/CostAnalysis'
+import WarningRules from '@/pages/WarningRules'
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
           <Route path="/approvals" element={<Approvals />} />
           <Route path="/transport" element={<TransportDashboard />} />
           <Route path="/cost-analysis" element={<CostAnalysis />} />
+          <Route path="/warning-rules" element={<WarningRules />} />
           <Route path="/mock" element={<MockData />} />
         </Route>
       </Routes>

@@ -17,6 +17,9 @@ import {
   XCircle,
   MessageSquare,
   Send,
+  Bell,
+  X,
+  Users,
 } from 'lucide-react'
 import useStore from '@/store/useStore'
 import StatsCard from '@/components/StatsCard'
@@ -71,6 +74,8 @@ export default function TransportDashboard() {
     updateTransportStatus,
     updateExceptionStatus,
     addExceptionReport,
+    warningNotifications,
+    markNotificationRead,
   } = useStore()
 
   const [transportFilter, setTransportFilter] = useState<'全部' | TransportStatus>('全部')
@@ -78,6 +83,8 @@ export default function TransportDashboard() {
   const [expandedTransportId, setExpandedTransportId] = useState<string | null>(null)
   const [showApprovedList, setShowApprovedList] = useState(true)
   const [showAddException, setShowAddException] = useState<string | null>(null)
+  const [showWarningBanner, setShowWarningBanner] = useState(true)
+  const [dismissedWarnings, setDismissedWarnings] = useState<string[]>([])
   const [newExceptionType, setNewExceptionType] = useState<ExceptionType>('其他')
   const [newExceptionSeverity, setNewExceptionSeverity] = useState<ExceptionSeverity>('一般')
   const [newExceptionDesc, setNewExceptionDesc] = useState('')
@@ -104,6 +111,18 @@ export default function TransportDashboard() {
     exceptions: exceptionReports.filter((e) => e.status !== '已解决').length,
     approved: approvedApprovals.length,
   }), [transportTasks, exceptionReports, approvedApprovals])
+
+  const unreadWarnings = useMemo(() => 
+    warningNotifications.filter((w) => 
+      w.status === '未读' && !dismissedWarnings.includes(w.id)
+    ).slice(0, 5)
+  , [warningNotifications, dismissedWarnings])
+
+  const warningLevelColors: Record<string, { bg: string; border: string; icon: string }> = {
+    danger: { bg: 'bg-red-50', border: 'border-red-200', icon: 'text-red-500' },
+    warning: { bg: 'bg-orange-50', border: 'border-orange-200', icon: 'text-orange-500' },
+    info: { bg: 'bg-blue-50', border: 'border-blue-200', icon: 'text-blue-500' },
+  }
 
   const toggleTransportExpand = (id: string) =>
     setExpandedTransportId((prev) => (prev === id ? null : id))
@@ -149,6 +168,82 @@ export default function TransportDashboard() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-surface-800">运输执行看板</h1>
       </div>
+
+      {showWarningBanner && unreadWarnings.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-surface-100 overflow-hidden">
+          <div className="p-4 flex items-center justify-between border-b border-surface-100">
+            <div className="flex items-center gap-2">
+              <Bell className="w-5 h-5 text-red-500" />
+              <h2 className="text-lg font-semibold text-surface-700">最新预警通知</h2>
+              <span className="px-2 py-0.5 bg-red-100 text-red-600 text-xs font-medium rounded-full">
+                {unreadWarnings.length} 条未读
+              </span>
+            </div>
+            <button
+              onClick={() => setShowWarningBanner(false)}
+              className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-400 hover:text-surface-600 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="divide-y divide-surface-50">
+            {unreadWarnings.map((warning) => {
+              const colors = warningLevelColors[warning.level]
+              return (
+                <div
+                  key={warning.id}
+                  className={`p-3 flex items-start gap-3 hover:bg-surface-50/50 transition-colors cursor-pointer ${colors.bg}`}
+                  onClick={() => {
+                    markNotificationRead(warning.id)
+                    setDismissedWarnings((prev) => [...prev, warning.id])
+                  }}
+                >
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    warning.ruleType === 'exception'
+                      ? 'bg-red-100 text-red-500'
+                      : warning.ruleType === 'eta'
+                      ? 'bg-orange-100 text-orange-500'
+                      : 'bg-blue-100 text-blue-500'
+                  }`}>
+                    {warning.ruleType === 'exception' ? (
+                      <AlertTriangle className="w-4 h-4" />
+                    ) : warning.ruleType === 'eta' ? (
+                      <Clock className="w-4 h-4" />
+                    ) : (
+                      <Users className="w-4 h-4" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-surface-800">{warning.title}</span>
+                    </div>
+                    <p className="text-xs text-surface-600 mt-0.5 line-clamp-1">{warning.message}</p>
+                    <p className="text-xs text-surface-400 mt-1">{warning.triggeredAt}</p>
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setDismissedWarnings((prev) => [...prev, warning.id])
+                    }}
+                    className="p-1 rounded hover:bg-white/50 text-surface-400 hover:text-surface-600 transition-colors flex-shrink-0"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+          <div className="p-3 bg-surface-50 border-t border-surface-100">
+            <a
+              href="#/warning-rules"
+              className="text-sm text-brand-500 hover:text-brand-600 font-medium flex items-center gap-1"
+            >
+              查看全部预警
+              <ArrowRight className="w-4 h-4" />
+            </a>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-6 gap-4">
         <StatsCard label="已完成审批" value={stats.approved} icon={CheckCircle2} color="green" />

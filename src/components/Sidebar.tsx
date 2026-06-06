@@ -8,10 +8,12 @@ import {
   LayoutDashboard,
   Truck,
   BarChart3,
+  Bell,
 } from 'lucide-react'
 
 const navItems = [
   { path: '/transport', label: '运输执行看板', icon: Truck },
+  { path: '/warning-rules', label: '节点预警中心', icon: Bell },
   { path: '/demands', label: '需求池', icon: Package },
   { path: '/quotes', label: '报价对比', icon: GitCompareArrows },
   { path: '/suppliers', label: '供应商选择', icon: Users },

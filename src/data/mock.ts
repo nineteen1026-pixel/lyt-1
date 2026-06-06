@@ -1,4 +1,4 @@
-import type { Demand, Quote, Supplier, Approval, ApprovalRecord, TransportTask, TransitNode, ExceptionReport, TransportStatus, TransitNodeStatus, ExceptionStatus, ExceptionType, ExceptionSeverity, RouteCostAnalysis, CargoTypeCostAnalysis, SupplierCostAnalysis, QuoteComparison, CostAnalysisSummary } from '@/types'
+import type { Demand, Quote, Supplier, Approval, ApprovalRecord, TransportTask, TransitNode, ExceptionReport, TransportStatus, TransitNodeStatus, ExceptionStatus, ExceptionType, ExceptionSeverity, RouteCostAnalysis, CargoTypeCostAnalysis, SupplierCostAnalysis, QuoteComparison, CostAnalysisSummary, WarningRule, WarningNotification, WarningRuleType, WarningLevel, WarningStatus } from '@/types'
 
 const cargoTypes = ['电子元器件', '机械零部件', '化工原料', '食品饮料', '纺织原料', '医疗器械', '汽车配件', '建材物资']
 const origins = ['上海浦东', '深圳盐田', '广州黄埔', '宁波北仑', '天津新港', '青岛前湾', '大连大窑湾', '厦门海沧']
@@ -617,6 +617,202 @@ export function generateCostAnalysisSummary(
   }
 }
 
+export function generateWarningRules(): WarningRule[] {
+  const defaultRules: WarningRule[] = [
+    {
+      id: 'WR-0001',
+      name: '预计到达时间临近预警',
+      type: 'eta',
+      enabled: true,
+      level: 'warning',
+      conditions: {
+        etaHoursThreshold: 2,
+      },
+      notifyMethods: ['站内通知', '短信'],
+      description: '当节点预计到达时间不足2小时时触发预警',
+      createdAt: generateDateTime(-30),
+    },
+    {
+      id: 'WR-0002',
+      name: '严重异常预警',
+      type: 'exception',
+      enabled: true,
+      level: 'danger',
+      conditions: {
+        exceptionTypes: ['货物损坏', '车辆故障', '延误'],
+        exceptionSeverities: ['严重', '重大'],
+      },
+      notifyMethods: ['站内通知', '邮件', '短信'],
+      description: '当发生严重或重大级别的货物损坏、车辆故障、延误异常时触发预警',
+      createdAt: generateDateTime(-25),
+    },
+    {
+      id: 'WR-0003',
+      name: '供应商评分过低预警',
+      type: 'supplier_score',
+      enabled: true,
+      level: 'warning',
+      conditions: {
+        scoreThreshold: 70,
+      },
+      notifyMethods: ['站内通知'],
+      description: '当供应商综合评分低于70分时触发预警',
+      createdAt: generateDateTime(-20),
+    },
+    {
+      id: 'WR-0004',
+      name: '即将超时预警',
+      type: 'eta',
+      enabled: true,
+      level: 'info',
+      conditions: {
+        etaHoursThreshold: 6,
+      },
+      notifyMethods: ['站内通知'],
+      description: '当节点预计到达时间不足6小时时提醒相关人员',
+      createdAt: generateDateTime(-15),
+    },
+    {
+      id: 'WR-0005',
+      name: '破损异常预警',
+      type: 'exception',
+      enabled: false,
+      level: 'warning',
+      conditions: {
+        exceptionTypes: ['破损', '改派'],
+        exceptionSeverities: ['一般', '严重'],
+      },
+      notifyMethods: ['站内通知'],
+      description: '当发生一般或严重级别的破损、改派异常时触发预警',
+      createdAt: generateDateTime(-10),
+    },
+    {
+      id: 'WR-0006',
+      name: '供应商评分警告线',
+      type: 'supplier_score',
+      enabled: true,
+      level: 'info',
+      conditions: {
+        scoreThreshold: 80,
+      },
+      notifyMethods: ['站内通知'],
+      description: '当供应商综合评分低于80分时发出提醒',
+      createdAt: generateDateTime(-5),
+    },
+  ]
+  return defaultRules
+}
+
+export function generateWarningNotifications(
+  transportTasks: TransportTask[],
+  suppliers: Supplier[],
+  exceptionReports: ExceptionReport[],
+  warningRules: WarningRule[],
+  transitNodes: TransitNode[]
+): WarningNotification[] {
+  const notifications: WarningNotification[] = []
+  let notificationId = 9001
+
+  const etaRule = warningRules.find((r) => r.type === 'eta' && r.enabled && r.conditions.etaHoursThreshold === 2)
+  if (etaRule) {
+    transportTasks
+      .filter((t) => t.status === '运输中')
+      .forEach((task) => {
+        const taskNodes = transitNodes.filter((n) => n.transportId === task.id && n.status === '未到达')
+        if (taskNodes.length > 0) {
+          const nextNode = taskNodes.sort((a, b) => a.order - b.order)[0]
+          if (nextNode) {
+            notifications.push({
+              id: `WN-${String(notificationId++).padStart(4, '0')}`,
+              ruleId: etaRule.id,
+              ruleName: etaRule.name,
+              ruleType: 'eta',
+              level: etaRule.level,
+              title: `${nextNode.name}节点即将到达`,
+              message: `运输任务 ${task.id}（${task.demandTitle}）的${nextNode.name}节点预计将于 ${nextNode.estimatedTime} 到达，请做好接货准备。`,
+              status: Math.random() > 0.5 ? '未读' : '已读',
+              transportId: task.id,
+              nodeId: nextNode.id,
+              nodeName: nextNode.name,
+              supplierId: task.supplierId,
+              supplierName: task.supplierName,
+              triggeredAt: generateDateTime(-1),
+            })
+          }
+        }
+      })
+  }
+
+  const exceptionRule = warningRules.find((r) => r.type === 'exception' && r.enabled)
+  if (exceptionRule) {
+    exceptionReports
+      .filter((e) => e.status !== '已解决')
+      .forEach((ex) => {
+        const task = transportTasks.find((t) => t.id === ex.transportId)
+        const supplier = suppliers.find((s) => s.id === ex.supplierId)
+        notifications.push({
+          id: `WN-${String(notificationId++).padStart(4, '0')}`,
+          ruleId: exceptionRule.id,
+          ruleName: exceptionRule.name,
+          ruleType: 'exception',
+          level: ex.severity === '重大' || ex.severity === '严重' ? 'danger' : 'warning',
+          title: `${ex.type}异常告警`,
+          message: `运输任务 ${task?.id || '未知'} 发生${ex.severity}级${ex.type}异常：${ex.description}`,
+          status: ex.status === '待处理' ? '未读' : '已读',
+          transportId: ex.transportId,
+          exceptionId: ex.id,
+          supplierId: ex.supplierId,
+          supplierName: supplier?.name,
+          triggeredAt: ex.reportedAt,
+        })
+      })
+  }
+
+  const scoreRule = warningRules.find((r) => r.type === 'supplier_score' && r.enabled && r.conditions.scoreThreshold === 70)
+  if (scoreRule) {
+    suppliers
+      .filter((s) => s.overallScore < 70)
+      .forEach((supplier) => {
+        notifications.push({
+          id: `WN-${String(notificationId++).padStart(4, '0')}`,
+          ruleId: scoreRule.id,
+          ruleName: scoreRule.name,
+          ruleType: 'supplier_score',
+          level: 'danger',
+          title: `${supplier.name}评分过低`,
+          message: `供应商 ${supplier.name}（${supplier.id}）当前综合评分为 ${supplier.overallScore} 分，低于预警阈值70分，请关注其服务质量。`,
+          status: Math.random() > 0.3 ? '未读' : '已读',
+          supplierId: supplier.id,
+          supplierName: supplier.name,
+          triggeredAt: generateDateTime(-2),
+        })
+      })
+  }
+
+  const infoScoreRule = warningRules.find((r) => r.type === 'supplier_score' && r.enabled && r.conditions.scoreThreshold === 80)
+  if (infoScoreRule) {
+    suppliers
+      .filter((s) => s.overallScore >= 70 && s.overallScore < 80)
+      .forEach((supplier) => {
+        notifications.push({
+          id: `WN-${String(notificationId++).padStart(4, '0')}`,
+          ruleId: infoScoreRule.id,
+          ruleName: infoScoreRule.name,
+          ruleType: 'supplier_score',
+          level: 'info',
+          title: `${supplier.name}评分接近警戒线`,
+          message: `供应商 ${supplier.name}（${supplier.id}）当前综合评分为 ${supplier.overallScore} 分，接近预警阈值80分，请注意关注。`,
+          status: Math.random() > 0.6 ? '未读' : '已读',
+          supplierId: supplier.id,
+          supplierName: supplier.name,
+          triggeredAt: generateDateTime(-3),
+        })
+      })
+  }
+
+  return notifications.sort((a, b) => new Date(b.triggeredAt).getTime() - new Date(a.triggeredAt).getTime())
+}
+
 export function generateAllData() {
   const demands = generateDemands(14)
   const suppliers = generateSuppliers(8)
@@ -636,6 +832,8 @@ export function generateAllData() {
     supplierCostAnalysis,
     quoteComparisons
   )
+  const warningRules = generateWarningRules()
+  const warningNotifications = generateWarningNotifications(transportTasks, suppliers, exceptionReports, warningRules, transitNodes)
   return {
     demands,
     suppliers,
@@ -650,5 +848,7 @@ export function generateAllData() {
     supplierCostAnalysis,
     quoteComparisons,
     costAnalysisSummary,
+    warningRules,
+    warningNotifications,
   }
 }

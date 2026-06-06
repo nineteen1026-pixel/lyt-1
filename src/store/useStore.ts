@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Demand, Quote, Supplier, Approval, ApprovalRecord, DemandStatus, Urgency, ApprovalStatus, ApprovalAction, TransportTask, TransitNode, ExceptionReport, TransportStatus, ExceptionStatus, ExceptionType, ExceptionSeverity, RouteCostAnalysis, CargoTypeCostAnalysis, SupplierCostAnalysis, QuoteComparison, CostAnalysisSummary } from '@/types'
+import type { Demand, Quote, Supplier, Approval, ApprovalRecord, DemandStatus, Urgency, ApprovalStatus, ApprovalAction, TransportTask, TransitNode, ExceptionReport, TransportStatus, ExceptionStatus, ExceptionType, ExceptionSeverity, RouteCostAnalysis, CargoTypeCostAnalysis, SupplierCostAnalysis, QuoteComparison, CostAnalysisSummary, WarningRule, WarningNotification, WarningRuleType, WarningLevel, WarningStatus } from '@/types'
 import { generateAllData } from '@/data/mock'
 
 interface SupplyChainStore {
@@ -16,6 +16,8 @@ interface SupplyChainStore {
   supplierCostAnalysis: SupplierCostAnalysis[]
   quoteComparisons: QuoteComparison[]
   costAnalysisSummary: CostAnalysisSummary
+  warningRules: WarningRule[]
+  warningNotifications: WarningNotification[]
 
   addDemand: (demand: Omit<Demand, 'id' | 'createdAt' | 'status'>) => void
   updateDemandStatus: (id: string, status: DemandStatus) => void
@@ -35,6 +37,14 @@ interface SupplyChainStore {
   updateSupplierScoreWithException: (supplierId: string, exceptionType: ExceptionType, severity: ExceptionSeverity) => number
   createTransportTaskFromApproval: (approvalId: string) => void
   createDefaultTransitNodes: (transportId: string) => void
+  addWarningRule: (rule: Omit<WarningRule, 'id' | 'createdAt'>) => void
+  updateWarningRule: (id: string, updates: Partial<WarningRule>) => void
+  deleteWarningRule: (id: string) => void
+  toggleWarningRule: (id: string) => void
+  markNotificationRead: (id: string) => void
+  markNotificationHandled: (id: string) => void
+  markAllNotificationsRead: () => void
+  runWarningDetection: () => void
 }
 
 const initialData = generateAllData()
@@ -82,6 +92,8 @@ const useStore = create<SupplyChainStore>((set, get) => ({
   supplierCostAnalysis: initialData.supplierCostAnalysis,
   quoteComparisons: initialData.quoteComparisons,
   costAnalysisSummary: initialData.costAnalysisSummary,
+  warningRules: initialData.warningRules,
+  warningNotifications: initialData.warningNotifications,
 
   addDemand: (demand) => {
     const id = getNextId('DM', get().demands)
@@ -156,6 +168,8 @@ const useStore = create<SupplyChainStore>((set, get) => ({
       supplierCostAnalysis: freshData.supplierCostAnalysis,
       quoteComparisons: freshData.quoteComparisons,
       costAnalysisSummary: freshData.costAnalysisSummary,
+      warningRules: freshData.warningRules,
+      warningNotifications: freshData.warningNotifications,
     })
   },
 
@@ -557,6 +571,189 @@ const useStore = create<SupplyChainStore>((set, get) => ({
     set((s) => ({
       transitNodes: [...s.transitNodes, ...newNodes],
     }))
+  },
+
+  addWarningRule: (rule) => {
+    const id = getNextId('WR', get().warningRules)
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 16)
+    set((state) => ({
+      warningRules: [
+        {
+          ...rule,
+          id,
+          createdAt: now,
+        },
+        ...state.warningRules,
+      ],
+    }))
+  },
+
+  updateWarningRule: (id, updates) => {
+    set((state) => ({
+      warningRules: state.warningRules.map((r) =>
+        r.id === id ? { ...r, ...updates } : r
+      ),
+    }))
+  },
+
+  deleteWarningRule: (id) => {
+    set((state) => ({
+      warningRules: state.warningRules.filter((r) => r.id !== id),
+    }))
+  },
+
+  toggleWarningRule: (id) => {
+    set((state) => ({
+      warningRules: state.warningRules.map((r) =>
+        r.id === id ? { ...r, enabled: !r.enabled } : r
+      ),
+    }))
+  },
+
+  markNotificationRead: (id) => {
+    set((state) => ({
+      warningNotifications: state.warningNotifications.map((n) =>
+        n.id === id && n.status === '未读' ? { ...n, status: '已读' } : n
+      ),
+    }))
+  },
+
+  markNotificationHandled: (id) => {
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 16)
+    set((state) => ({
+      warningNotifications: state.warningNotifications.map((n) =>
+        n.id === id
+          ? { ...n, status: '已处理', handledAt: now, handledBy: '当前用户' }
+          : n
+      ),
+    }))
+  },
+
+  markAllNotificationsRead: () => {
+    set((state) => ({
+      warningNotifications: state.warningNotifications.map((n) =>
+        n.status === '未读' ? { ...n, status: '已读' } : n
+      ),
+    }))
+  },
+
+  runWarningDetection: () => {
+    const state = get()
+    const { transportTasks, suppliers, exceptionReports, warningRules, transitNodes } = state
+    const now = new Date()
+    const newNotifications: WarningNotification[] = []
+
+    warningRules.filter((r) => r.enabled).forEach((rule) => {
+      if (rule.type === 'eta' && rule.conditions.etaHoursThreshold) {
+        const threshold = rule.conditions.etaHoursThreshold
+        transportTasks
+          .filter((t) => t.status === '运输中')
+          .forEach((task) => {
+            const taskNodes = transitNodes.filter(
+              (n) => n.transportId === task.id && n.status === '未到达'
+            )
+            if (taskNodes.length > 0) {
+              const nextNode = taskNodes.sort((a, b) => a.order - b.order)[0]
+              if (nextNode) {
+                const eta = new Date(nextNode.estimatedTime.replace(' ', 'T'))
+                const hoursDiff = (eta.getTime() - now.getTime()) / (1000 * 60 * 60)
+                if (hoursDiff > 0 && hoursDiff <= threshold) {
+                  const existingNotif = state.warningNotifications.find(
+                    (n) => n.nodeId === nextNode.id && n.ruleId === rule.id
+                  )
+                  if (!existingNotif) {
+                    newNotifications.push({
+                      id: getNextId('WN', [...state.warningNotifications, ...newNotifications]),
+                      ruleId: rule.id,
+                      ruleName: rule.name,
+                      ruleType: 'eta',
+                      level: rule.level,
+                      title: `${nextNode.name}节点即将到达`,
+                      message: `运输任务 ${task.id}（${task.demandTitle}）的${nextNode.name}节点预计将于 ${nextNode.estimatedTime} 到达，距现在约 ${Math.round(hoursDiff)} 小时，请做好接货准备。`,
+                      status: '未读',
+                      transportId: task.id,
+                      nodeId: nextNode.id,
+                      nodeName: nextNode.name,
+                      supplierId: task.supplierId,
+                      supplierName: task.supplierName,
+                      triggeredAt: now.toISOString().replace('T', ' ').slice(0, 16),
+                    })
+                  }
+                }
+              }
+            }
+          })
+      }
+
+      if (rule.type === 'exception') {
+        const targetTypes = rule.conditions.exceptionTypes || []
+        const targetSeverities = rule.conditions.exceptionSeverities || []
+        exceptionReports
+          .filter((e) => e.status !== '已解决')
+          .forEach((ex) => {
+            const typeMatch = targetTypes.length === 0 || targetTypes.includes(ex.type)
+            const severityMatch = targetSeverities.length === 0 || targetSeverities.includes(ex.severity)
+            if (typeMatch && severityMatch) {
+              const existingNotif = state.warningNotifications.find(
+                (n) => n.exceptionId === ex.id && n.ruleId === rule.id
+              )
+              if (!existingNotif) {
+                const task = transportTasks.find((t) => t.id === ex.transportId)
+                const supplier = suppliers.find((s) => s.id === ex.supplierId)
+                newNotifications.push({
+                  id: getNextId('WN', [...state.warningNotifications, ...newNotifications]),
+                  ruleId: rule.id,
+                  ruleName: rule.name,
+                  ruleType: 'exception',
+                  level: ex.severity === '重大' || ex.severity === '严重' ? 'danger' : rule.level,
+                  title: `${ex.type}异常告警`,
+                  message: `运输任务 ${task?.id || '未知'} 发生${ex.severity}级${ex.type}异常：${ex.description}`,
+                  status: '未读',
+                  transportId: ex.transportId,
+                  exceptionId: ex.id,
+                  supplierId: ex.supplierId,
+                  supplierName: supplier?.name,
+                  triggeredAt: ex.reportedAt,
+                })
+              }
+            }
+          })
+      }
+
+      if (rule.type === 'supplier_score' && rule.conditions.scoreThreshold !== undefined) {
+        const threshold = rule.conditions.scoreThreshold
+        suppliers.forEach((supplier) => {
+          if (supplier.overallScore < threshold) {
+            const existingNotif = state.warningNotifications.find(
+              (n) => n.supplierId === supplier.id && n.ruleId === rule.id
+            )
+            if (!existingNotif) {
+              newNotifications.push({
+                id: getNextId('WN', [...state.warningNotifications, ...newNotifications]),
+                ruleId: rule.id,
+                ruleName: rule.name,
+                ruleType: 'supplier_score',
+                level: rule.level,
+                title: `${supplier.name}评分过低`,
+                message: `供应商 ${supplier.name}（${supplier.id}）当前综合评分为 ${supplier.overallScore} 分，低于预警阈值 ${threshold} 分，请关注其服务质量。`,
+                status: '未读',
+                supplierId: supplier.id,
+                supplierName: supplier.name,
+                triggeredAt: now.toISOString().replace('T', ' ').slice(0, 16),
+              })
+            }
+          }
+        })
+      }
+    })
+
+    if (newNotifications.length > 0) {
+      set((s) => ({
+        warningNotifications: [...newNotifications, ...s.warningNotifications].sort(
+          (a, b) => new Date(b.triggeredAt).getTime() - new Date(a.triggeredAt).getTime()
+        ),
+      }))
+    }
   },
 }))
 

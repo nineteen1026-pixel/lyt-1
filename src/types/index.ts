@@ -203,3 +203,44 @@ export interface CostAnalysisSummary {
   topCargoType: string
   topSupplier: string
 }
+
+export type WarningRuleType = 'eta' | 'exception' | 'supplier_score'
+export type WarningLevel = 'info' | 'warning' | 'danger'
+export type WarningStatus = '未读' | '已读' | '已处理'
+
+export interface WarningRule {
+  id: string
+  name: string
+  type: WarningRuleType
+  enabled: boolean
+  level: WarningLevel
+  conditions: {
+    etaHoursThreshold?: number
+    exceptionTypes?: ExceptionType[]
+    exceptionSeverities?: ExceptionSeverity[]
+    scoreThreshold?: number
+  }
+  notifyMethods: string[]
+  description: string
+  createdAt: string
+}
+
+export interface WarningNotification {
+  id: string
+  ruleId: string
+  ruleName: string
+  ruleType: WarningRuleType
+  level: WarningLevel
+  title: string
+  message: string
+  status: WarningStatus
+  transportId?: string
+  supplierId?: string
+  supplierName?: string
+  exceptionId?: string
+  nodeId?: string
+  nodeName?: string
+  triggeredAt: string
+  handledAt?: string
+  handledBy?: string
+}
